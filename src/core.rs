@@ -31,37 +31,45 @@ impl<M> Tokenizer<M>
 where
     M: Model + DeserializeOwned + Serialize,
 {
-    pub fn encode(&self, _: &str) -> Vec<u32> {
-        unimplemented!()
+    pub fn new(model: M) -> Tokenizer<M> {
+        Tokenizer { model }
     }
 
-    pub fn decode(&self, _: &[u32]) -> String {
-        unimplemented!()
+    pub fn encode(&self, input: &str) -> Vec<u32> {
+        self.model.encode(input)
     }
 
-    pub fn token_to_id(&self, _: &str) -> Option<u32> {
-        unimplemented!()
+    pub fn decode(&self, input: &[u32]) -> String {
+        self.model.decode(input)
     }
 
-    pub fn id_to_token(&self, _: u32) -> Option<String> {
-        unimplemented!()
+    pub fn token_to_id(&self, token: &str) -> Option<u32> {
+        self.model.token_to_id(token)
+    }
+
+    pub fn id_to_token(&self, id: u32) -> Option<String> {
+        self.model.id_to_token(id)
     }
 
     pub fn vocab_size(&self) -> usize {
-        unimplemented!()
+        self.model.vocab_size()
     }
 
-    pub fn save(&self, _: &str) {
-        unimplemented!()
+    pub fn save(&self, filepath: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let contents = serde_json::to_string(self)?;
+        std::fs::write(filepath, contents)?;
+        Ok(())
     }
 }
 
 /// Load a tokenizer from a file.
-pub fn load<M>(_: &str) -> Tokenizer<M>
+pub fn load<M>(file: &str) -> Result<Tokenizer<M>, Box<dyn std::error::Error>>
 where
     M: Model + DeserializeOwned + Serialize,
 {
-    unimplemented!()
+    let contents = std::fs::read_to_string(file)?;
+    let tokenizer: Tokenizer<M> = serde_json::from_str(&contents)?;
+    Ok(tokenizer)
 }
 
 static SERIALIZATION_VERSION: &str = "1.0";

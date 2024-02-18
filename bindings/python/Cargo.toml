@@ -14,9 +14,6 @@ exclude = ["target/*", ".env/*", ".gitignore"]
 name = "tokengeex"
 crate-type = ["cdylib"]
 
-[dependencies.tokengeex]
-version = "0.1.0"
-path = "../.."
-
 [dependencies]
+tokengeex = { path = "../..", version = "0.1.0" }
 pyo3 = "0.19.0"

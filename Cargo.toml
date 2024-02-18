@@ -4,11 +4,25 @@ authors = ["Diego ROJAS (罗杰斯) <rojasdiegopro@gmail.com>"]
 version = "0.1.0"
 edition = "2021"
 homepage = "https://codegeex.cn"
+documentation = "https://docs.rs/tokengeex/"
 readme = "README.md"
 license = "Apache-2.0"
 keywords = ["tokenizer", "codegeex", "llm", "nlp"]
 description = "TokenGeeX is an efficient tokenizer for code based on UnigramLM and TokenMonster."
+exclude = ["data/*", "target/*", ".github/*", ".gitignore"]
 
 [lib]
 name = "tokengeex"
 path = "src/lib.rs"
+
+[[bin]]
+name = "tokengeex"
+path = "src/cli.rs"
+required-features = ["cli"]
+
+[dependencies]
+rand = "0.8.5"
+unicode_categories = "0.1.1"
+
+[features]
+cli = []

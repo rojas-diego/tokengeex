@@ -69,7 +69,7 @@ fn main() {
 You can install the [Rust binary crate](https://crates.io/crates/tokengeex) through **cargo**.
 
 ```
-cargo add tokengeex --features cli
+cargo install tokengeex --features cli
 ```
 
 Example usage:

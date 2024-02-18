@@ -1,3 +1,4 @@
-pub fn say_hello() -> String {
-    "Hello, world!".into()
-}
+pub mod capcode;
+
+mod lattice;
+mod trie;

@@ -1,4 +1,3 @@
 pub mod capcode;
-
-mod lattice;
-mod trie;
+pub mod core;
+pub mod unigram;

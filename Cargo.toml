@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2021"
 homepage = "https://codegeex.cn"
 readme = "README.md"
-license = "Apache 2.0"
+license = "Apache-2.0"
 keywords = ["tokenizer", "codegeex", "llm", "nlp"]
 description = "TokenGeeX is an efficient tokenizer for code based on UnigramLM and TokenMonster."
 

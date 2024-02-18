@@ -1,0 +1,20 @@
+[package]
+name = "tokengeex-python"
+authors = ["Diego ROJAS (罗杰斯) <rojasdiegopro@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+homepage = "https://codegeex.cn"
+license = "Apache 2.0"
+keywords = ["tokenizer", "codegeex", "llm", "nlp"]
+description = "TokenGeeX is an efficient tokenizer for code based on UnigramLM and TokenMonster."
+
+[lib]
+name = "tokengeex"
+crate-type = ["cdylib"]
+
+[dependencies.tokengeex]
+version = "0.1.0"
+path = "../.."
+
+[dependencies]
+pyo3 = "0.19.0"

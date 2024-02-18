@@ -1,0 +1,23 @@
+# MacOS
+.DS_Store
+
+# Rust
+/target
+/Cargo.lock
+
+# Data
+/data
+
+# Python Bindings
+/bindings/python/**/__pycache__
+/bindings/python/build
+/bindings/python/.env
+/bindings/python/dist
+/bindings/python/target
+/bindings/python/Cargo.lock
+
+# VSCode
+.vscode
+
+# IntelliJ
+.idea

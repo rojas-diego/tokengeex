@@ -65,6 +65,7 @@ pub enum UnigramError {
     MissingByteToken(u8),
 }
 
+#[derive(Clone)]
 pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<String, u32>,
@@ -326,11 +327,15 @@ impl<'de> Visitor<'de> for UnigramVisitor {
         V: MapAccess<'de>,
     {
         let mut model_type: Option<String> = None;
+        let mut vocab: Option<Vec<ScoredToken>> = None;
 
         while let Some(key) = map.next_key()? {
             match key {
                 "type" => {
                     model_type = Some(map.next_value()?);
+                }
+                "vocab" => {
+                    vocab = Some(map.next_value()?);
                 }
                 _ => {
                     return Err(serde::de::Error::unknown_field(key, &["type"]));
@@ -339,8 +344,10 @@ impl<'de> Visitor<'de> for UnigramVisitor {
         }
 
         match model_type.as_deref() {
-            // TODO: Change that, it crashes.
-            Some("unigram") => Ok(Unigram::default()),
+            Some("unigram") => match vocab {
+                Some(vocab) => Ok(Unigram::from(vocab).unwrap()),
+                None => Ok(Unigram::default()),
+            },
             _ => Err(serde::de::Error::custom("invalid model type")),
         }
     }

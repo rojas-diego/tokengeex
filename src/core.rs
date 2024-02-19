@@ -1,10 +1,6 @@
-use std::marker::PhantomData;
+use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
 
-use serde::{
-    de::{DeserializeOwned, Visitor},
-    ser::SerializeStruct,
-    Deserialize, Deserializer, Serialize,
-};
+use crate::unigram::Unigram;
 
 pub struct SpecialToken {
     pub value: String,
@@ -23,18 +19,50 @@ pub trait Model {
     fn vocab_size(&self) -> usize;
 }
 
-pub struct Tokenizer<M> {
-    model: M,
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum ModelWrapper {
+    Unigram(Unigram),
 }
 
-impl<M> Tokenizer<M>
-where
-    M: Model + DeserializeOwned + Serialize,
-{
-    pub fn new(model: M) -> Tokenizer<M> {
-        Tokenizer { model }
+impl Model for ModelWrapper {
+    fn encode(&self, input: &str) -> Vec<u32> {
+        match self {
+            ModelWrapper::Unigram(model) => model.encode(input),
+        }
     }
 
+    fn decode(&self, input: &[u32]) -> String {
+        match self {
+            ModelWrapper::Unigram(model) => model.decode(input),
+        }
+    }
+
+    fn token_to_id(&self, token: &str) -> Option<u32> {
+        match self {
+            ModelWrapper::Unigram(model) => model.token_to_id(token),
+        }
+    }
+
+    fn id_to_token(&self, id: u32) -> Option<String> {
+        match self {
+            ModelWrapper::Unigram(model) => model.id_to_token(id),
+        }
+    }
+
+    fn vocab_size(&self) -> usize {
+        match self {
+            ModelWrapper::Unigram(model) => model.vocab_size(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Tokenizer {
+    model: ModelWrapper,
+}
+
+impl Tokenizer {
     pub fn encode(&self, input: &str) -> Vec<u32> {
         self.model.encode(input)
     }
@@ -63,21 +91,15 @@ where
 }
 
 /// Load a tokenizer from a file.
-pub fn load<M>(file: &str) -> Result<Tokenizer<M>, Box<dyn std::error::Error>>
-where
-    M: Model + DeserializeOwned + Serialize,
-{
+pub fn load(file: &str) -> Result<Tokenizer, Box<dyn std::error::Error>> {
     let contents = std::fs::read_to_string(file)?;
-    let tokenizer: Tokenizer<M> = serde_json::from_str(&contents)?;
+    let tokenizer: Tokenizer = serde_json::from_str(&contents)?;
     Ok(tokenizer)
 }
 
 static SERIALIZATION_VERSION: &str = "1.0";
 
-impl<M> Serialize for Tokenizer<M>
-where
-    M: Model + DeserializeOwned + Serialize,
-{
+impl Serialize for Tokenizer {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -91,29 +113,19 @@ where
     }
 }
 
-impl<'de, M> Deserialize<'de> for Tokenizer<M>
-where
-    M: Model + DeserializeOwned + Serialize,
-{
+impl<'de> Deserialize<'de> for Tokenizer {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_struct(
-            "Tokenizer",
-            &["version", "model"],
-            TokenizerVisitor(PhantomData),
-        )
+        deserializer.deserialize_struct("Tokenizer", &["version", "model"], TokenizerVisitor)
     }
 }
 
-struct TokenizerVisitor<M>(PhantomData<M>);
+struct TokenizerVisitor;
 
-impl<'de, M> Visitor<'de> for TokenizerVisitor<M>
-where
-    M: Model + DeserializeOwned + Serialize,
-{
-    type Value = Tokenizer<M>;
+impl<'de> Visitor<'de> for TokenizerVisitor {
+    type Value = Tokenizer;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("struct Tokenizer")
@@ -124,7 +136,7 @@ where
         A: serde::de::MapAccess<'de>,
     {
         let mut version: Option<String> = None;
-        let mut model: Option<M> = None;
+        let mut model: Option<ModelWrapper> = None;
 
         while let Some(key) = map.next_key()? {
             match key {
@@ -155,23 +167,21 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::unigram::Unigram;
-
     use super::*;
     use serde_json;
 
     #[test]
     fn test_deserialize() {
         let tokenizer_json = r#"{"version":"1.0","model":{"type":"unigram"}}"#;
-        let tokenizer: Result<Tokenizer<Unigram>, _> = serde_json::from_str(tokenizer_json);
+        let tokenizer: Result<Tokenizer, _> = serde_json::from_str(tokenizer_json);
         assert!(tokenizer.is_ok());
 
         let tokenizer_json = r#"{"version":"2.0","model":{"type":"unigram"}}"#;
-        let tokenizer: Result<Tokenizer<Unigram>, _> = serde_json::from_str(tokenizer_json);
+        let tokenizer: Result<Tokenizer, _> = serde_json::from_str(tokenizer_json);
         assert!(tokenizer.is_err());
 
         let tokenizer_json = r#"{"version":"1.0","model":{"type":"bigram"}}"#;
-        let tokenizer: Result<Tokenizer<Unigram>, _> = serde_json::from_str(tokenizer_json);
+        let tokenizer: Result<Tokenizer, _> = serde_json::from_str(tokenizer_json);
         assert!(tokenizer.is_err());
     }
 }

@@ -1,6 +1,6 @@
 # TokenGeeX - Efficient Tokenizer for CodeGeeX
 
-This repository holds the code for the TokenGeeX Rust crate and Python package. TokenGeeX is an efficient tokenizer for code based on [UnigramLM (Taku Kudo 2018)](https://arxiv.org/abs/1804.10959) and [TokenMonster](https://github.com/alasdairforsythe/tokenmonster).
+This repository holds the code for the TokenGeeX Rust crate and Python package. TokenGeeX is a tokenizer for [CodeGeeX](https://github.com/THUDM/Codegeex2) aimed at code and Chinese. It is based on [UnigramLM (Taku Kudo 2018)](https://arxiv.org/abs/1804.10959) and [TokenMonster](https://github.com/alasdairforsythe/tokenmonster).
 
 ## Python
 
@@ -72,24 +72,48 @@ You can install the [Rust binary crate](https://crates.io/crates/tokengeex) thro
 cargo install tokengeex --features cli
 ```
 
-Example usage:
+Here's a sample command to train a 32k vocabulary on a gigabyte of data.
 
 ```bash
-tokengeex train --model 'unigram' \
+RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --input 'data/train/en-cn-code-1GB.bin' \
     --output 'data/vocab/unigram-en-cn-code-32k.json' \
-    --vocab-size '32768' \
-    --max-token-length '24' \
-    --max-words-per-token '3' \
-    --max-sentence-size '64' \
-    --shrinking-factor '0.8' \
-    --initial-vocab-size '1000000' \
-    --initial-vocab-cache 'data/cache/vocab-32k-en-cn-code-1GB' \
-    --num-sub-iterations '2' \
-    --suggested-tokens-file 'data/tokens/suggested.json' \
-    --added-tokens-file 'data/tokens/added.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
     --special-token '<|CODE_MIDDLE|>' \
-    --special-token '<|EOS|>'
+    --special-token '<|EOS|>' \
+    --vocab-size 32768 \
+    --shrinking-factor '0.75' \
+    --num-sub-iterations '2' \
+    --suggested-tokens-file 'data/tokens/suggested.json' \
+    --added-tokens-file 'data/tokens/added.json' \
+    --vg-max-token-length '24' \
+    --vg-max-words-per-token '3' \
+    --vg-initial-vocab-size '1000000' \
+    --vg-insert-probability '0.01' \
+    --vg-cache 'data/cache/vocab-32k-en-cn-code-1GB.json' \
+    --sg-max-sentence-size '64'
+```
+
+Here's a sample command to train a 4k vocabulary on a hundred megabytes of data.
+
+```bash
+RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
+    --input 'data/train/en-cn-code-100MB.bin' \
+    --output 'data/vocab/unigram-en-cn-code-4k.json' \
+    --special-token '<|CODE_PREFIX|>' \
+    --special-token '<|CODE_SUFFIX|>' \
+    --special-token '<|CODE_MIDDLE|>' \
+    --special-token '<|EOS|>' \
+    --vocab-size 4096 \
+    --shrinking-factor '0.75' \
+    --num-sub-iterations '2' \
+    --suggested-tokens-file 'data/tokens/suggested.json' \
+    --added-tokens-file 'data/tokens/added.json' \
+    --vg-max-token-length '16' \
+    --vg-max-words-per-token '3' \
+    --vg-initial-vocab-size '30000' \
+    --vg-insert-probability '0.01' \
+    --vg-cache 'data/cache/vocab-4k-en-cn-code-100MB.json' \
+    --sg-max-sentence-size '32'
 ```

@@ -410,10 +410,10 @@ mod tests {
             (3, WordKind::Capitalized)
         );
 
-        // assert_eq!(
-        //     consume_word('H', &mut "é".chars()),
-        //     (1, WordKind::Capitalized)
-        // );
+        assert_eq!(
+            consume_word('H', &mut "é".chars()),
+            (1, WordKind::Capitalized)
+        );
     }
 
     #[test]

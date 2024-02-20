@@ -299,6 +299,7 @@ impl Serialize for Unigram {
         let mut model = serializer.serialize_struct("Unigram", 1)?;
 
         model.serialize_field("type", "unigram")?;
+        model.serialize_field("vocab", &self.vocab)?;
 
         model.end()
     }
@@ -407,13 +408,16 @@ impl SentenceGenerator {
 pub struct VocabularyGenerator {
     words_per_token: usize,
     window_size: usize,
+    insert_probability: f64,
 }
 
 impl VocabularyGenerator {
-    pub fn new(words_per_token: usize, window_size: usize) -> Self {
+    // TODO: Need to validate that insert probability is between 0 and 1.
+    pub fn new(words_per_token: usize, window_size: usize, insert_probability: f64) -> Self {
         Self {
             words_per_token,
             window_size,
+            insert_probability,
         }
     }
 
@@ -436,7 +440,9 @@ impl VocabularyGenerator {
                 for (ii, c) in suffix.char_indices().take(self.window_size) {
                     let candidate = &suffix[..ii + c.len_utf8()];
 
-                    if self.is_valid_token(candidate) && rng.gen_range(0..50) < 1 {
+                    if self.is_valid_token(candidate)
+                        && rng.gen_range(0.0..1.0) < self.insert_probability
+                    {
                         tokens.entry(candidate).and_modify(|c| *c += 1).or_insert(1);
                     }
                 }
@@ -557,8 +563,6 @@ pub struct UnigramTrainer {
     pub suggested_tokens: Vec<String>,
     #[builder(default = "vec![]")]
     pub added_tokens: Vec<String>,
-    #[builder(default = "vec![]")]
-    pub special_tokens: Vec<String>,
 
     #[builder(default = "Vec::new()")]
     sentences: Vec<Sentence>,
@@ -649,7 +653,7 @@ impl UnigramTrainer {
                     vocab.len(),
                     objective,
                     num_tokens,
-                    (num_tokens as f64) / (num_bytes as f64)
+                    (num_bytes as f64) / (num_tokens as f64)
                 );
 
                 new_model = Unigram::from(vocab.clone())?;
@@ -925,7 +929,7 @@ impl UnigramTrainer {
     fn finalize(&self, model: Unigram) -> Result<Unigram> {
         let mut vocab: Vec<(String, f64)> = vec![];
 
-        let vocab_size_without_special_tokens = self.vocab_size - self.special_tokens.len();
+        let vocab_size_without_special_tokens = self.vocab_size;
 
         for (token, score) in model.iter() {
             vocab.push((
@@ -940,14 +944,7 @@ impl UnigramTrainer {
 
         vocab[256..].sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
 
-        // Insert the necessary tokens
-        let special_tokens = self
-            .special_tokens
-            .iter()
-            .map(|t| (t.clone(), 0.0))
-            .collect::<Vec<_>>();
-
-        Unigram::from(vocab.into_iter().chain(special_tokens).collect())
+        Unigram::from(vocab.into_iter().collect())
     }
 }
 
@@ -983,7 +980,7 @@ mod tests {
     fn test_vocabulary_generator() {
         let samples = vec!["你好", "大家好"];
 
-        let generator = VocabularyGenerator::new(2, 2);
+        let generator = VocabularyGenerator::new(2, 2, 1.0);
         let vocab = generator.generate_vocabulary(&samples, 5);
 
         assert_eq!(vocab.len(), 5);
@@ -998,7 +995,7 @@ mod tests {
         }
 
         let samples = vec![" how to do that", " how to", " compute", " for i in"];
-        let generator = VocabularyGenerator::new(2, 24);
+        let generator = VocabularyGenerator::new(2, 24, 1.0);
         let vocab = generator.generate_vocabulary(&samples, 100);
 
         assert!(vocab.len() <= 100);
@@ -1013,7 +1010,7 @@ mod tests {
 
         let samples = vec!["DU mixedD 123"];
 
-        let generator = VocabularyGenerator::new(2, 24);
+        let generator = VocabularyGenerator::new(2, 24, 1.0);
         let vocab = generator.generate_vocabulary(&samples, 10);
 
         assert_eq!(vocab.len(), 10);

@@ -90,6 +90,14 @@ impl Tokenizer {
     }
 }
 
+impl From<Unigram> for Tokenizer {
+    fn from(model: Unigram) -> Self {
+        Tokenizer {
+            model: ModelWrapper::Unigram(model),
+        }
+    }
+}
+
 /// Load a tokenizer from a file.
 pub fn load(file: &str) -> Result<Tokenizer, Box<dyn std::error::Error>> {
     let contents = std::fs::read_to_string(file)?;

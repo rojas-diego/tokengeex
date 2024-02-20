@@ -25,8 +25,8 @@ the_stack_smol = the_stack_smol.shuffle(99)
 result = {}
 
 for sample in the_stack_smol:
-    # Skip 99% of the samples to make the computation faster
-    if random.random() > 0.01:
+    # Skip 90% of the samples
+    if random.random() < 0.9:
         continue
 
     lang = sample["lang"]
@@ -34,7 +34,14 @@ for sample in the_stack_smol:
     repository_name = sample["repository_name"]
     path = sample["path"]
 
-    ids = tokenizer.encode(tokengeex.capcode.encode(content))
+    try:
+        ids = tokenizer.encode(tokengeex.capcode.encode(content))
+    except:  # noqa: E722
+        print(f"Error tokenizing {repository_name}/{path}")
+        print("----------------------------------------")
+        print(content, end="")
+        print("----------------------------------------")
+        sys.exit(1)
 
     if lang not in result:
         result[lang] = {

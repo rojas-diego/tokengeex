@@ -45,6 +45,8 @@ mod flags {
                 optional --vg-insert-probability vg_insert_probability: f64
                 /// Filepath where to cache the initial vocabulary.
                 optional --vg-cache vg_cache: String
+                /// Strict boolean.
+                optional --vg-strict vg_strict: bool
 
                 // --- Sentence Generator ---
                 /// Max sentence size.
@@ -91,12 +93,21 @@ fn encode(input: Option<&str>, vocab: &str) {
 
     let encoded = tokenizer.encode(&tokengeex::capcode::encode(&input));
 
-    println!(
-        "{:?}",
+    println!("-------------------");
+    print!(
+        "{}",
         encoded
             .iter()
-            .map(|id| (id, tokenizer.id_to_token(*id).unwrap()))
-            .collect::<Vec<_>>()
+            .map(|id| tokenizer.id_to_token(*id).unwrap())
+            .collect::<Vec<String>>()
+            .join("█")
+    );
+    println!("-------------------");
+    println!("Bytes: {}", input.len());
+    println!("Tokens: {}", encoded.len());
+    println!(
+        "Bytes per token: {}",
+        (input.len() as f64) / (encoded.len() as f64)
     );
 }
 
@@ -164,6 +175,7 @@ fn train(
     vg_initial_vocab_size: usize,
     vg_insert_probability: f64,
     vg_cache: Option<String>,
+    vg_strict: bool,
     // --- Sentence Generator ---
     sg_max_sentence_size: usize,
 ) {
@@ -178,12 +190,13 @@ fn train(
         num_sub_iterations
     );
     log::info!(
-        "Vocabulary Generator: max_token_length={}, max_words_per_token={}, initial_vocab_size={}, insert_probability={}, cache={}",
+        "Vocabulary Generator: max_token_length={}, max_words_per_token={}, initial_vocab_size={}, insert_probability={}, cache={} strict={}",
         vg_max_token_length,
         vg_max_words_per_token,
         vg_initial_vocab_size,
         vg_insert_probability,
-        vg_cache.as_deref().unwrap_or("None")
+        vg_cache.as_deref().unwrap_or("None"),
+        vg_strict
     );
     log::info!(
         "Sentence Generator: max_sentence_size={}",
@@ -247,6 +260,7 @@ fn train(
         vg_max_words_per_token,
         vg_max_token_length,
         vg_insert_probability,
+        vg_strict,
     );
     let vocab = match vg_cache {
         Some(vg_cache) => {
@@ -324,6 +338,7 @@ fn main() {
                 flags.vg_initial_vocab_size.unwrap_or(100000),
                 flags.vg_insert_probability.unwrap_or(0.02),
                 flags.vg_cache,
+                flags.vg_strict.unwrap_or(false),
                 // --- Sentence Generator ---
                 flags.sg_max_sentence_size.unwrap_or(64),
             );

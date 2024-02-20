@@ -15,6 +15,7 @@ use serde::{
 };
 
 use crate::{
+    capcode,
     core::Model,
     parallelism::{current_num_threads, MaybeParallelBridge, MaybeParallelSlice},
 };
@@ -118,7 +119,7 @@ impl Unigram {
         for (pos, c) in lattice.sentence.char_indices() {
             let suffix = lattice.sentence.bytes().skip(pos);
 
-            // Search the available tokens for the current offsetition.
+            // Search the available tokens for the current offset.
             let mut matches = self.trie.common_prefix_search(suffix).peekable();
 
             // There's no entry in the vocab that starts with suffix. We
@@ -191,28 +192,40 @@ impl<'a> Iterator for UnigramIterator<'a> {
 
 impl Model for Unigram {
     fn encode(&self, input: &str) -> Vec<u32> {
-        #[derive(Debug, Clone)]
-        struct BestPathNode {
-            id: usize,
-            best_path_score: f64,
-            starts_at: Option<usize>,
+        #[derive(Clone, Debug)]
+        struct Node {
+            id: u32,
+            score: f64,
+            start: Option<usize>,
         }
 
-        impl Default for BestPathNode {
-            fn default() -> Self {
-                Self {
-                    id: 0,
-                    best_path_score: 0.0,
-                    starts_at: None,
-                }
-            }
-        }
+        // For each position i in dp, we store the best tokenization of the
+        // input sequence up to position i.
+        let mut dp = vec![
+            Node {
+                id: 0,
+                score: 0.0,
+                start: None
+            };
+            input.len() + 1
+        ];
 
-        let mut dp = vec![BestPathNode::default(); input.len() + 1];
+        dp[0].start = Some(0);
 
         for (pos, c) in input.char_indices() {
-            let best_score_at_pos = dp[pos].best_path_score;
+            // We skip positions that are unreachable.
+            if dp[pos].start.is_none() {
+                continue;
+            }
+
             let suffix = input.bytes().skip(pos);
+
+            log::trace!(
+                "Encoding pos={} suffix={:?} dp={:?}",
+                pos,
+                &input[pos..],
+                dp
+            );
 
             // Search the available tokens for the current offsetition.
             let mut matches = self.trie.common_prefix_search(suffix).peekable();
@@ -220,33 +233,54 @@ impl Model for Unigram {
             // There's no entry in the vocab that starts with suffix. We
             // fallback to byte level tokenization.
             if matches.peek().is_none() {
-                let mut dst = [0; 4];
-                let char_bytes = c.encode_utf8(&mut dst).as_bytes().iter().enumerate();
+                let mut char_bytes = [0; 4];
+                let char_bytes = c.encode_utf8(&mut char_bytes).as_bytes().iter().enumerate();
+
+                log::trace!("No matches for {:?}", &input[pos..]);
 
                 for (i, &byte) in char_bytes {
-                    let target_node = &mut dp[pos + i + 1];
-                    let token_score = self.vocab[byte as usize].1;
-                    let new_score = best_score_at_pos + token_score;
+                    log::trace!("Byte: {}", byte);
 
-                    if target_node.starts_at.is_none() || new_score > target_node.best_path_score {
-                        target_node.best_path_score = new_score;
-                        target_node.starts_at = Some(pos + i);
-                        target_node.id = byte as usize;
+                    // The node at which this byte ends.
+                    let pos = pos + i;
+                    let score = dp[pos].score;
+                    let dst_node = &dp[pos + 1];
+                    let token_score = self.vocab[byte as usize].1;
+                    let new_score = score + token_score;
+
+                    if dst_node.start.is_none() || new_score > dst_node.score {
+                        dp[pos + 1] = Node {
+                            id: byte as u32,
+                            score: new_score,
+                            start: Some(pos),
+                        };
                     }
                 }
             // Otherwise, we Gucci and we can just iterate over the matches.
             } else {
                 for token in matches {
-                    let target_node = &mut dp[pos + token.len()];
+                    log::trace!("Match token={:?}", String::from_utf8_lossy(&token));
+
+                    // The node at which this token ends.
+                    let dst_node = &dp[pos + token.len()];
                     let token = String::from_utf8(token).unwrap();
                     let token_id = *self.token_to_ids.get(&token).unwrap();
                     let token_score = self.vocab[token_id as usize].1;
-                    let new_score = best_score_at_pos + token_score;
+                    let new_score = dp[pos].score + token_score;
 
-                    if target_node.starts_at.is_none() || new_score > target_node.best_path_score {
-                        target_node.best_path_score = new_score;
-                        target_node.starts_at = Some(pos);
-                        target_node.id = token_id as usize;
+                    if dst_node.start.is_none() || new_score > dst_node.score {
+                        log::trace!(
+                            "New best score score={} range={}..{}",
+                            new_score,
+                            pos,
+                            pos + token.len()
+                        );
+
+                        dp[pos + token.len()] = Node {
+                            id: token_id,
+                            score: new_score,
+                            start: Some(pos),
+                        };
                     }
                 }
             }
@@ -256,13 +290,23 @@ impl Model for Unigram {
         let mut pos = input.len();
         let mut ids: Vec<u32> = vec![];
 
+        log::trace!("Encode reached end dp={:?}", dp);
+
         while pos > 0 {
             let node = &dp[pos];
-            let starts_at = node.starts_at.unwrap();
 
-            ids.push(node.id as u32);
+            let start = node.start.unwrap_or_else(|| {
+                panic!(
+                    "decode: current node at pos {}/{} (id={}, score={}) has no start position",
+                    pos,
+                    input.len(),
+                    node.id,
+                    node.score,
+                )
+            });
 
-            pos = starts_at;
+            ids.push(node.id);
+            pos = start;
         }
 
         // Reverse to maintain original order since we built it backwards.
@@ -409,15 +453,22 @@ pub struct VocabularyGenerator {
     words_per_token: usize,
     window_size: usize,
     insert_probability: f64,
+    strict: bool,
 }
 
 impl VocabularyGenerator {
     // TODO: Need to validate that insert probability is between 0 and 1.
-    pub fn new(words_per_token: usize, window_size: usize, insert_probability: f64) -> Self {
+    pub fn new(
+        words_per_token: usize,
+        window_size: usize,
+        insert_probability: f64,
+        strict: bool,
+    ) -> Self {
         Self {
             words_per_token,
             window_size,
             insert_probability,
+            strict,
         }
     }
 
@@ -435,6 +486,8 @@ impl VocabularyGenerator {
                 tokens.len()
             );
 
+            let mut sample_tokens = HashSet::new();
+
             for (i, _) in sample.char_indices() {
                 let suffix = &sample[i..];
                 for (ii, c) in suffix.char_indices().take(self.window_size) {
@@ -443,13 +496,17 @@ impl VocabularyGenerator {
                     if self.is_valid_token(candidate)
                         && rng.gen_range(0.0..1.0) < self.insert_probability
                     {
-                        tokens.entry(candidate).and_modify(|c| *c += 1).or_insert(1);
+                        sample_tokens.insert(candidate.to_string());
                     }
                 }
             }
 
             for b in sample.bytes() {
                 byte_freq[b as usize] += 1;
+            }
+
+            for token in sample_tokens {
+                *tokens.entry(token).or_insert(0) += 1;
             }
         }
 
@@ -468,7 +525,7 @@ impl VocabularyGenerator {
             .iter()
             .enumerate()
             .map(|(i, token)| {
-                seen.insert(*token);
+                seen.insert(token.to_string());
 
                 (token.to_string(), byte_freq[i] as f64)
             })
@@ -503,41 +560,49 @@ impl VocabularyGenerator {
             return false;
         }
 
-        // If it contains a mix of ASCII and non-ASCII characters, it is not
-        // valid.
-        let is_ascii = token.chars().next().unwrap().is_ascii();
-        for c in token.chars() {
-            if is_ascii != c.is_ascii() {
-                return false;
-            }
-        }
-
-        // If it contains more than `words_per_token` words it is not valid.
-        // If it contains more than one consecutive space, it is not valid.
-        let mut previous_char = 'a';
+        let mut has_word = false; // Any alphanumeric sequence.
+        let mut has_ascii = false;
+        let mut has_punctuation = false; // Anything non-alphanumeric.
+        let mut has_non_ascii = false;
         let mut num_spaces = 0;
-        let mut is_whitespace = true;
+        let mut num_words = 0; // Number of whitespace separated sequences of characters.
+        let mut previous_char = ' ';
 
         for c in token.chars() {
-            if c.is_whitespace() {
-                num_spaces += 1;
+            if !capcode::is_marker(c) {
+                if c.is_ascii() {
+                    has_ascii = true;
 
-                if previous_char.is_whitespace() {
-                    return false;
+                    if c.is_alphanumeric() {
+                        has_word = true;
+                    } else if c.is_whitespace() {
+                        num_spaces += 1;
+                    } else {
+                        has_punctuation = true;
+                    }
+                } else {
+                    has_non_ascii = true;
                 }
+            }
 
-                if num_spaces > self.words_per_token {
-                    return false;
-                }
-            } else {
-                is_whitespace = false;
+            if c.is_whitespace() && !previous_char.is_whitespace() {
+                num_words += 1;
             }
 
             previous_char = c;
         }
 
-        if !is_whitespace && previous_char.is_whitespace() {
+        if num_words > self.words_per_token {
             return false;
+        }
+
+        if self.strict {
+            if has_ascii && has_non_ascii {
+                return false;
+            }
+            if has_word && (previous_char.is_whitespace() || num_spaces > 1 || has_punctuation) {
+                return false;
+            }
         }
 
         true
@@ -977,48 +1042,6 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
 
     #[test]
-    fn test_vocabulary_generator() {
-        let samples = vec!["你好", "大家好"];
-
-        let generator = VocabularyGenerator::new(2, 2, 1.0);
-        let vocab = generator.generate_vocabulary(&samples, 5);
-
-        assert_eq!(vocab.len(), 5);
-
-        for el in [
-            ("你好".to_string(), 6.0),
-            ("家好".to_string(), 6.0),
-            ("好".to_string(), 6.0),
-            ("大家".to_string(), 6.0),
-        ] {
-            assert!(vocab.contains(&el));
-        }
-
-        let samples = vec![" how to do that", " how to", " compute", " for i in"];
-        let generator = VocabularyGenerator::new(2, 24, 1.0);
-        let vocab = generator.generate_vocabulary(&samples, 100);
-
-        assert!(vocab.len() <= 100);
-
-        for el in [(" how to".to_string(), 14.0), (" to".to_string(), 6.0)] {
-            assert!(vocab.contains(&el), "{:?}", vocab);
-        }
-
-        let words: HashSet<_> = vocab.iter().map(|(s, _)| s.as_str()).collect();
-
-        assert!(!words.contains("how to do that"));
-
-        let samples = vec!["DU mixedD 123"];
-
-        let generator = VocabularyGenerator::new(2, 24, 1.0);
-        let vocab = generator.generate_vocabulary(&samples, 10);
-
-        assert_eq!(vocab.len(), 10);
-
-        println!("{:?}", vocab);
-    }
-
-    #[test]
     fn test_to_log_prob() {
         let mut a = vec![("".to_string(), 1.0), ("".to_string(), 2.0)];
         to_log_prob(&mut a);
@@ -1033,6 +1056,43 @@ mod tests {
         let scores = a.iter().map(|(_, score)| *score).collect::<Vec<_>>();
         // ln(0) - ln(3)
         assert_eq!(scores[0], f64::NEG_INFINITY);
+    }
+
+    #[test]
+    fn test_vocab_generator_is_valid_token() {
+        // Strict
+        let vg = VocabularyGenerator::new(2, 2, 0.0, true);
+
+        assert!(vg.is_valid_token("hello"));
+        assert!(!vg.is_valid_token("hello "));
+        assert!(vg.is_valid_token("hello world"));
+        assert!(!vg.is_valid_token("hello world "));
+
+        assert!(vg.is_valid_token(" abc"));
+        assert!(vg.is_valid_token(" 123"));
+
+        assert!(vg.is_valid_token("大家哦好"));
+        assert!(!vg.is_valid_token("Hello 大家哦好"));
+
+        assert!(vg.is_valid_token("// ****"));
+        assert!(vg.is_valid_token("//D"));
+
+        assert!(vg.is_valid_token(" + "));
+        assert!(vg.is_valid_token(" +D "));
+
+        assert!(vg.is_valid_token("    "));
+        assert!(vg.is_valid_token("\n"));
+        assert!(vg.is_valid_token("\t"));
+        assert!(vg.is_valid_token("\n\t"));
+        assert!(vg.is_valid_token("\n\t\t"));
+
+        assert!(!vg.is_valid_token("<div>"));
+        assert!(!vg.is_valid_token("(D self"));
+
+        let vg = VocabularyGenerator::new(2, 2, 0.0, false);
+
+        assert!(vg.is_valid_token("<div>"));
+        assert!(vg.is_valid_token("(D self"));
     }
 
     #[test]

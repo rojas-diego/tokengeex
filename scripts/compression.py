@@ -40,10 +40,8 @@ for lang, samples in dataset.items():
         code = sample["code"]  # type: ignore
 
         try:
-            code_capcode = tokengeex.capcode.encode(code)
-            ids = tokenizer.encode(code_capcode)
-            decoded_capcode = tokenizer.decode(ids)
-            decoded = tokengeex.capcode.decode(decoded_capcode)
+            ids = tokenizer.encode(code)
+            decoded = tokenizer.decode(ids)
         except:  # noqa: E722
             print("Error tokenizing")
             print("----------------------------------------")

@@ -91,24 +91,27 @@ fn encode(input: Option<&str>, vocab: &str) {
 
     let tokenizer = tokengeex::core::load(vocab).unwrap();
 
-    let encoded = tokenizer.encode(&tokengeex::capcode::encode(&input));
+    let encoded = tokenizer.encode(&input);
 
-    println!("-------------------");
-    print!(
-        "{}",
-        encoded
-            .iter()
-            .map(|id| tokenizer.id_to_token(*id).unwrap())
-            .collect::<Vec<String>>()
-            .join("█")
-    );
-    println!("-------------------");
-    println!("Bytes: {}", input.len());
-    println!("Tokens: {}", encoded.len());
-    println!(
-        "Bytes per token: {}",
-        (input.len() as f64) / (encoded.len() as f64)
-    );
+    let colors = vec![
+        "\x1B[31m", // Red
+        "\x1B[32m", // Green
+        "\x1B[33m", // Yellow
+        "\x1B[34m", // Blue
+        "\x1B[35m", // Magenta
+        "\x1B[36m", // Cyan
+    ];
+
+    let encoded = encoded
+        .iter()
+        .map(|id| tokenizer.id_to_token(*id).unwrap().to_string())
+        .collect::<Vec<String>>();
+
+    for (i, token) in encoded.iter().enumerate() {
+        print!("{}{}", colors[i % colors.len()], token);
+    }
+
+    print!("\x1B[0m");
 }
 
 /// Decode a tokenised array of IDs.
@@ -237,7 +240,7 @@ fn train(
     // and then converting the resulting byte slices to UTF-8 strings.
     let samples = dataset
         .split(|&b| b == 0x00)
-        .map(|s| capcode::encode(String::from_utf8_lossy(s).as_ref()))
+        .map(|s| tokengeex::capcode::encode(&String::from_utf8_lossy(s)))
         .collect::<Vec<String>>();
 
     // We can dispose of the dataset to free up memory.

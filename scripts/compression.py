@@ -1,75 +1,77 @@
 """
-This script computes the compression ratio for a TokenGeeX tokenizer over the
-bigcode/the-stack-smol dataset. It gives a per-language and overall compression
-ratio.
+This script computes the compression ratio for a TokenGeeX tokenizer over a
+JSONL dataset. It gives a per-language and overall compression ratio.
 """
 
-import random
+import json
 import sys
 
-import datasets
 import numpy as np
 import tokengeex
 
-assert len(sys.argv) == 2, "Usage: python compression.py <path-to-tokenizer>"
+assert len(sys.argv) > 2, "Usage: python compression.py <path-to-tokenizer> [lang]"
 
 tokenizer = tokengeex.load(sys.argv[1])
 
-the_stack_smol = datasets.load_dataset("bigcode/the-stack-smol", split="train")
-the_stack_smol = the_stack_smol.filter(
-    lambda sample: sample["lang"].lower()
-    in ["python", "javascript", "java", "go", "c", "c++"]
+langs = sys.argv[2:]
+
+dataset = {
+    lang: [
+        json.loads(line)
+        for line in open(f"data/test/{lang}.jsonl").read().strip().split("\n")
+    ]
+    for lang in langs
+}
+
+
+result = {
+    lang: {
+        "ntokens": np.array([]),
+        "nbytes": np.array([]),
+        "nchars": np.array([]),
+        "lossless": np.array([], dtype=bool),
+    }
+    for lang in langs
+}
+
+
+for lang, samples in dataset.items():
+    for i, sample in enumerate(samples):
+        code = sample["code"]  # type: ignore
+
+        try:
+            code_capcode = tokengeex.capcode.encode(code)
+            ids = tokenizer.encode(code_capcode)
+            decoded_capcode = tokenizer.decode(ids)
+            decoded = tokengeex.capcode.decode(decoded_capcode)
+        except:  # noqa: E722
+            print("Error tokenizing")
+            print("----------------------------------------")
+            print(code, end="")
+            print("----------------------------------------")
+            sys.exit(1)
+
+        lossless = code == decoded
+        ntokens = len(ids)
+        nbytes = len(code.encode("utf-8"))
+        nchars = len(code)
+
+        bytes_per_token = nbytes / ntokens
+        chars_per_token = nchars / ntokens
+
+        print(
+            f"{lang:<10} | {i+1:>4}/{len(samples):>4} | {nbytes:>6} bytes | {nchars:>6} chars | {ntokens:>6} tokens | {round(bytes_per_token, 2):>4} bytes/token | {('lossless' if lossless else 'lossy'):>10}"
+        )
+
+        result[lang]["ntokens"] = np.append(result[lang]["ntokens"], ntokens)
+        result[lang]["nbytes"] = np.append(result[lang]["nbytes"], nbytes)
+        result[lang]["nchars"] = np.append(result[lang]["nchars"], nchars)
+        result[lang]["lossless"] = np.append(result[lang]["lossless"], lossless)
+
+
+print(
+    f"{'lang':<10},{'nbytes':>10},{'nchars':>10},{'ntokens':>10},{'count':>10},{'bpt':>10},{'cpt':>10},{'avg bpt':>10},{'avg cpt':>10},{'lossless':>10}"
 )
-the_stack_smol = the_stack_smol.shuffle(99)
-
-result = {}
-
-for sample in the_stack_smol:
-    # Skip 90% of the samples
-    if random.random() < 0.9:
-        continue
-
-    lang = sample["lang"]
-    content = sample["content"]
-    repository_name = sample["repository_name"]
-    path = sample["path"]
-
-    try:
-        ids = tokenizer.encode(tokengeex.capcode.encode(content))
-    except:  # noqa: E722
-        print(f"Error tokenizing {repository_name}/{path}")
-        print("----------------------------------------")
-        print(content, end="")
-        print("----------------------------------------")
-        sys.exit(1)
-
-    if lang not in result:
-        result[lang] = {
-            "ntokens": np.array([]),
-            "nbytes": np.array([]),
-            "nchars": np.array([]),
-        }
-
-    ntokens = len(ids)
-    nbytes = len(content.encode("utf-8"))
-    nchars = len(content)
-
-    bytes_per_token = nbytes / ntokens
-    chars_per_token = nchars / ntokens
-
-    print(
-        f"{lang:>10} | {nbytes:>6} bytes | {ntokens:>6} tokens | {round(bytes_per_token, 2):>4} bytes/token | {repository_name}/{path}"
-    )
-
-    # if bytes_per_token < 2:
-    #     print("----------------------------------------")
-    #     print(content, end="")
-    #     print("----------------------------------------")
-
-    result[lang]["ntokens"] = np.append(result[lang]["ntokens"], ntokens)
-    result[lang]["nbytes"] = np.append(result[lang]["nbytes"], nbytes)
-    result[lang]["nchars"] = np.append(result[lang]["nchars"], nchars)
-
 
 for lang, data in result.items():
     ntokens = data["ntokens"].sum()
@@ -80,7 +82,8 @@ for lang, data in result.items():
     cpts = data["nchars"] / data["ntokens"]
     bpt = bpts.mean()
     cpt = cpts.mean()
+    lossless = data["lossless"].mean()
 
     print(
-        f"{lang:>10}: {int(nbytes):>10} bytes, {int(nchars):>10} chars, {int(ntokens):>10} tokens, {int(count):>10} samples, {round(bpt, 2):>4} bytes/token, {round(cpt, 2):>4} chars/token"
+        f"{lang:<10},{int(nbytes):>10},{int(nchars):>10},{int(ntokens):>10},{int(count):>10},{round(bpt, 2):>10},{round(cpt, 2):>10},{round(nbytes / ntokens, 2):>10},{round(nchars / ntokens, 2):>10},{round(lossless, 2):>10}"
     )

@@ -1073,9 +1073,11 @@ mod tests {
 
         assert!(vg.is_valid_token("大家哦好"));
         assert!(!vg.is_valid_token("Hello 大家哦好"));
+        assert!(!vg.is_valid_token("été"));
 
         assert!(vg.is_valid_token("// ****"));
         assert!(vg.is_valid_token("//D"));
+        assert!(vg.is_valid_token("D "));
 
         assert!(vg.is_valid_token(" + "));
         assert!(vg.is_valid_token(" +D "));
@@ -1091,6 +1093,7 @@ mod tests {
 
         let vg = VocabularyGenerator::new(2, 2, 0.0, false);
 
+        assert!(vg.is_valid_token("D "));
         assert!(vg.is_valid_token("<div>"));
         assert!(vg.is_valid_token("(D self"));
     }

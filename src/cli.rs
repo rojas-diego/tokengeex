@@ -94,12 +94,9 @@ fn encode(input: Option<&str>, vocab: &str) {
     let encoded = tokenizer.encode(&input);
 
     let colors = vec![
-        "\x1B[31m", // Red
-        "\x1B[32m", // Green
-        "\x1B[33m", // Yellow
-        "\x1B[34m", // Blue
-        "\x1B[35m", // Magenta
-        "\x1B[36m", // Cyan
+        "\x1B[102m", // Bright Green background
+        "\x1B[103m", // Bright Yellow background
+        "\x1B[104m", // Bright Blue background
     ];
 
     let encoded = encoded
@@ -111,7 +108,7 @@ fn encode(input: Option<&str>, vocab: &str) {
         print!("{}{}", colors[i % colors.len()], token);
     }
 
-    print!("\x1B[0m");
+    print!("\x1B[49m");
 }
 
 /// Decode a tokenised array of IDs.
@@ -226,7 +223,6 @@ fn train(
         .vocab_size(vocab_size)
         .shrinking_factor(shrinking_factor)
         .num_sub_iterations(num_sub_iterations)
-        .suggested_tokens(suggested_tokens)
         .added_tokens(added_tokens)
         .build()
         .unwrap();
@@ -263,6 +259,7 @@ fn train(
         vg_max_words_per_token,
         vg_max_token_length,
         vg_insert_probability,
+        suggested_tokens,
         vg_strict,
     );
     let vocab = match vg_cache {
@@ -310,7 +307,11 @@ fn train(
     let mut model = Unigram::default();
     trainer.train(&mut model, vocab).unwrap();
 
-    let tokenizer = tokengeex::core::Tokenizer::from(model);
+    let mut tokenizer = tokengeex::core::Tokenizer::from(model);
+
+    let special_tokens: Vec<&str> = special_tokens.iter().map(AsRef::as_ref).collect();
+
+    tokenizer.add_special_tokens(special_tokens.as_slice());
 
     log::info!("Saving model to {:?}", output);
 

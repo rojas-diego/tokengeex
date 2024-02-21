@@ -239,8 +239,8 @@ impl Serialize for Tokenizer {
         let mut tokenizer = serializer.serialize_struct("Tokenizer", 2)?;
 
         tokenizer.serialize_field("version", SERIALIZATION_VERSION)?;
-        tokenizer.serialize_field("model", &self.model)?;
         tokenizer.serialize_field("special_tokens", &self.special_tokens)?;
+        tokenizer.serialize_field("model", &self.model)?;
 
         tokenizer.end()
     }

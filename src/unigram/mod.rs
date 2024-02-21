@@ -464,6 +464,7 @@ pub struct VocabularyGenerator {
     words_per_token: usize,
     window_size: usize,
     insert_probability: f64,
+    suggested_tokens: Vec<String>,
     strict: bool,
 }
 
@@ -473,12 +474,14 @@ impl VocabularyGenerator {
         words_per_token: usize,
         window_size: usize,
         insert_probability: f64,
+        suggested_tokens: Vec<String>,
         strict: bool,
     ) -> Self {
         Self {
             words_per_token,
             window_size,
             insert_probability,
+            suggested_tokens,
             strict,
         }
     }
@@ -507,7 +510,7 @@ impl VocabularyGenerator {
                     if self.is_valid_token(candidate)
                         && rng.gen_range(0.0..1.0) < self.insert_probability
                     {
-                        sample_tokens.insert(candidate.to_string());
+                        sample_tokens.insert(candidate);
                     }
                 }
             }
@@ -523,6 +526,16 @@ impl VocabularyGenerator {
 
         log::info!("Sorting tokens by frequency");
 
+        // Collect the frequency of the suggested tokens.
+        // TODO: Instead of relying on a default frequency of 1, we should
+        // consider the frequency of the suggested tokens in the dataset. This
+        // involves making a second pass over the dataset.
+        let suggested_tokens_freq = self
+            .suggested_tokens
+            .iter()
+            .map(|token| tokens.get(token.as_str()).copied().unwrap_or(1))
+            .collect::<Vec<usize>>();
+
         // Convert the tokens to a vector and sort them by frequency.
         let mut tokens: Vec<_> = tokens.into_iter().collect();
         tokens.sort_by_key(|(_, freq)| Reverse(*freq));
@@ -535,32 +548,43 @@ impl VocabularyGenerator {
         let mut vocab: Vec<ScoredToken> = BYTE_FALLBACKS
             .iter()
             .enumerate()
-            .map(|(i, token)| {
-                seen.insert(token.to_string());
+            .map(|(i, &token)| {
+                seen.insert(token);
 
-                (token.to_string(), byte_freq[i] as f64)
+                (token.into(), byte_freq[i] as f64)
             })
             .collect();
 
+        // Add the suggested tokens.
+        for (i, token) in self.suggested_tokens.iter().enumerate() {
+            if !seen.contains(token.as_str()) {
+                seen.insert(token);
+                vocab.push((
+                    token.clone(),
+                    (suggested_tokens_freq[i] as f64) * (token.len() as f64),
+                ));
+            }
+        }
+
         // We further add the most frequent substrings.
-        for (token, freq) in tokens.into_iter() {
+        for (token, freq) in tokens {
             if vocab.len() >= size {
                 break;
             }
 
-            if !seen.contains(&token) {
+            if !seen.contains(token) {
                 vocab.push((token.to_string(), (freq * token.len()) as f64));
             }
 
             seen.insert(token);
         }
 
-        // Convert the scores to log probabilities.
-        to_log_prob(&mut vocab);
-
         // Sort the vocabulary by score.
         vocab[256..]
             .sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Convert the scores to log probabilities.
+        to_log_prob(&mut vocab);
 
         vocab
     }
@@ -1072,7 +1096,7 @@ mod tests {
     #[test]
     fn test_vocab_generator_is_valid_token() {
         // Strict
-        let vg = VocabularyGenerator::new(2, 2, 0.0, true);
+        let vg = VocabularyGenerator::new(2, 2, 0.0, vec![], true);
 
         assert!(vg.is_valid_token("hello"));
         assert!(!vg.is_valid_token("hello "));
@@ -1102,7 +1126,7 @@ mod tests {
         assert!(!vg.is_valid_token("<div>"));
         assert!(!vg.is_valid_token("(D self"));
 
-        let vg = VocabularyGenerator::new(2, 2, 0.0, false);
+        let vg = VocabularyGenerator::new(2, 2, 0.0, vec![], false);
 
         assert!(vg.is_valid_token("D "));
         assert!(vg.is_valid_token("<div>"));

@@ -580,11 +580,21 @@ impl VocabularyGenerator {
         }
 
         // Sort the vocabulary by score.
-        vocab[256..]
-            .sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        vocab[256..].sort_by(|(_, a), (_, b)| {
+            a.partial_cmp(b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .reverse()
+        });
 
         // Convert the scores to log probabilities.
         to_log_prob(&mut vocab);
+
+        // Computing log probabilities generates NaNs for items where freq=0.
+        vocab.iter_mut().for_each(|(_, score)| {
+            if !score.is_normal() {
+                *score = 0.0;
+            }
+        });
 
         vocab
     }

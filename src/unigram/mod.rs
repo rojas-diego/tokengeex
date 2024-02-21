@@ -316,10 +316,21 @@ impl Model for Unigram {
     }
 
     fn decode(&self, ids: &[u32]) -> String {
-        ids.iter()
-            .map(|id| self.vocab[*id as usize].0.as_str())
-            .collect::<Vec<&str>>()
-            .join("")
+        let mut buf = Vec::with_capacity(ids.len() * 2);
+
+        for id in ids {
+            if *id > 255 {
+                let token = self.id_to_token(*id).unwrap_or_else(|| {
+                    panic!("decode: token with id {} not found in the vocabulary", id)
+                });
+
+                buf.extend(token.bytes());
+            } else {
+                buf.push(*id as u8);
+            }
+        }
+
+        String::from_utf8_lossy(&buf).into_owned()
     }
 
     fn token_to_id(&self, token: &str) -> Option<u32> {

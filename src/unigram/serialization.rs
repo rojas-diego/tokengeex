@@ -147,4 +147,15 @@ mod tests {
 
         assert_eq!(model.vocab, deserialized.vocab);
     }
+
+    #[test]
+    fn test_serialize_deszerialize_invariants() {
+        let vocab = (0..255_u8).map(|b| (vec![b], 1.0)).collect::<Vec<_>>();
+        let model = Unigram::from(vocab);
+
+        let serialized = serde_json::to_string(&model).unwrap();
+        let deserialized: Unigram = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(model.vocab, deserialized.vocab);
+    }
 }

@@ -23,12 +23,12 @@ const APOSTROPHE: char = '\'';
 ///
 /// # Examples
 ///
-/// ```
-/// use codetokens::encode;
+/// ```no_run
+/// use tokengeex::capcode::encode;
 ///
 /// let input = "Hello, World!";
-/// let output = encode(input.as_bytes());
-/// assert_eq!(output, b"DC hello,C world!");
+/// let output = encode(input);
+/// assert_eq!(output, "DC hello,C world!".to_string());
 /// ```
 ///
 /// # Details
@@ -190,7 +190,6 @@ enum WordKind {
 /// consumed. In this capcode implementation, a word boundary is tricky to
 /// define but goes something like this:
 ///
-/// ```
 /// "{WORD} "
 /// "{Word}Word"
 /// "{Wor'd}WORD"
@@ -200,7 +199,6 @@ enum WordKind {
 /// "{WORD}大家好"
 /// "{word}123"
 /// "{123}word"
-/// ```
 ///
 /// Where word is any sequence of ascii alphabetical characters
 /// or apostrophes or unicode modifiers.

@@ -318,15 +318,15 @@ mod tests {
 
     #[test]
     fn test_deserialize() {
-        let tokenizer_json = r#"{"version":"1.0","model":{"type":"unigram"}}"#;
+        let tokenizer_json = r#"{"version":"1.0","model":{"type":"unigram","vocab":[]}}"#;
         let tokenizer: Result<Tokenizer, _> = serde_json::from_str(tokenizer_json);
         assert!(tokenizer.is_ok());
 
-        let tokenizer_json = r#"{"version":"2.0","model":{"type":"unigram"}}"#;
+        let tokenizer_json = r#"{"version":"2.0","model":{"type":"unigram","vocab":[]}}"#;
         let tokenizer: Result<Tokenizer, _> = serde_json::from_str(tokenizer_json);
         assert!(tokenizer.is_err());
 
-        let tokenizer_json = r#"{"version":"1.0","model":{"type":"bigram"}}"#;
+        let tokenizer_json = r#"{"version":"1.0","model":{"type":"bigram","vocab":[]}}"#;
         let tokenizer: Result<Tokenizer, _> = serde_json::from_str(tokenizer_json);
         assert!(tokenizer.is_err());
     }

@@ -169,7 +169,7 @@ impl Model for Unigram {
 
             let start = node.start.unwrap_or_else(|| {
                 panic!(
-                    "decode: current node at pos {}/{} (id={}, score={}) has no start position",
+                    "encode: current node at pos {}/{} (id={}, score={}) has no start position",
                     pos,
                     input.len(),
                     node.id,
@@ -197,15 +197,17 @@ impl Model for Unigram {
         let mut res = Vec::new();
 
         for &id in ids {
-            let token = self.id_to_token(id).unwrap_or_else(|| {
+            if id >= self.vocab_size() as u32 {
                 panic!(
                     "decode: token ID {} is out of bounds (vocab size is {})",
                     id,
                     self.vocab.len()
-                )
-            });
+                );
+            }
 
-            res.extend_from_slice(token.as_bytes());
+            let (token, _) = &self.vocab[id as usize];
+
+            res.extend_from_slice(token);
         }
 
         String::from_utf8_lossy(&res).into_owned()
@@ -247,5 +249,17 @@ mod tests {
         let model = Unigram::from(vocab);
         let ids = model.encode("abc");
         assert_eq!(ids, vec![3, 2]);
+    }
+
+    #[test]
+    fn test_decode_encode_invariants() {
+        let vocab = (0..255_u8).map(|b| (vec![b], 1.0)).collect();
+        let model = Unigram::from(vocab);
+        let input = "你好，我叫罗杰斯";
+
+        let ids = model.encode(input);
+        assert_eq!(ids.len(), input.len());
+        let decoded = model.decode(&ids);
+        assert_eq!(decoded, input);
     }
 }

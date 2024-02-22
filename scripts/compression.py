@@ -7,11 +7,18 @@ import json
 import sys
 
 import numpy as np
-import tokengeex
 
 assert len(sys.argv) > 2, "Usage: python compression.py <path-to-tokenizer> [lang]"
 
-tokenizer = tokengeex.load(sys.argv[1])
+# If the tokenizer name has no extension, assume it's a HuggingFace tokenizer
+if "." not in sys.argv[1]:
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(sys.argv[1])
+else:
+    import tokengeex
+
+    tokenizer = tokengeex.load(sys.argv[1])
 
 langs = sys.argv[2:]
 

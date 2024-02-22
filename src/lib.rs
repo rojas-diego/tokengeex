@@ -4,4 +4,4 @@ pub mod unigram;
 
 pub use core::*;
 
-mod parallelism;
+mod utils;

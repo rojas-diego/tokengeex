@@ -1,8 +1,6 @@
 use tokengeex::{
     capcode,
-    unigram::{
-        ScoredToken, SentenceGenerator, Unigram, UnigramTrainerBuilder, VocabularyGenerator,
-    },
+    unigram::{ScoredToken, Unigram, UnigramTrainerBuilder, VocabularyGenerator},
 };
 
 mod flags {
@@ -47,10 +45,6 @@ mod flags {
                 optional --vg-cache vg_cache: String
                 /// Strict boolean.
                 optional --vg-strict vg_strict: bool
-
-                // --- Sentence Generator ---
-                /// Max sentence size.
-                optional --sg-max-sentence-size sg_max_sentence_size: usize
             }
 
             /// Encode text using a tokeniser.
@@ -176,8 +170,6 @@ fn train(
     vg_insert_probability: f64,
     vg_cache: Option<String>,
     vg_strict: bool,
-    // --- Sentence Generator ---
-    sg_max_sentence_size: usize,
 ) {
     assert!(model == "unigram", "Only 'unigram' model is supported");
 
@@ -197,10 +189,6 @@ fn train(
         vg_insert_probability,
         vg_cache.as_deref().unwrap_or("None"),
         vg_strict
-    );
-    log::info!(
-        "Sentence Generator: max_sentence_size={}",
-        sg_max_sentence_size
     );
 
     fn collect_tokens(files: Vec<String>) -> Vec<String> {
@@ -234,26 +222,17 @@ fn train(
     // The dataset is composed of 0x00 separated samples which are UTF-8
     // encoded. We obtain the samples by splitting the dataset on 0x00 bytes
     // and then converting the resulting byte slices to UTF-8 strings.
-    let samples = dataset
+    let samples: Vec<String> = dataset
         .split(|&b| b == 0x00)
         .map(|s| tokengeex::capcode::encode(&String::from_utf8_lossy(s)))
-        .collect::<Vec<String>>();
+        .collect();
 
     // We can dispose of the dataset to free up memory.
     drop(dataset);
 
+    samples.iter().for_each(|s| trainer.feed(s));
+
     log::info!("Loaded {} samples", samples.len());
-
-    let sentence_generator = SentenceGenerator::new(sg_max_sentence_size);
-
-    // We feed all samples to the trainer.
-    trainer
-        .feed(samples.iter(), |sample| {
-            Ok(sentence_generator.generate_sentences(sample))
-        })
-        .unwrap();
-
-    log::info!("Trainer fed");
 
     let initial_vocab_generator = VocabularyGenerator::new(
         vg_max_words_per_token,
@@ -275,10 +254,8 @@ fn train(
 
                 vocab
             } else {
-                let str_samples: Vec<&str> = samples.iter().map(AsRef::as_ref).collect();
-
                 let vocab = initial_vocab_generator
-                    .generate_vocabulary(&str_samples, vg_initial_vocab_size);
+                    .generate_vocabulary(samples.iter().map(AsRef::as_ref), vg_initial_vocab_size);
 
                 log::info!(
                     "Generated {} tokens and saved to {:?}",
@@ -292,9 +269,8 @@ fn train(
             }
         }
         None => {
-            let str_samples: Vec<&str> = samples.iter().map(AsRef::as_ref).collect();
-            let vocab =
-                initial_vocab_generator.generate_vocabulary(&str_samples, vg_initial_vocab_size);
+            let vocab = initial_vocab_generator
+                .generate_vocabulary(samples.iter().map(AsRef::as_ref), vg_initial_vocab_size);
 
             log::info!("Generated {} tokens", vocab.len());
 
@@ -343,8 +319,6 @@ fn main() {
                 flags.vg_insert_probability.unwrap_or(0.02),
                 flags.vg_cache,
                 flags.vg_strict.unwrap_or(false),
-                // --- Sentence Generator ---
-                flags.sg_max_sentence_size.unwrap_or(64),
             );
         }
         flags::TokengeexCmd::Encode(flags) => {

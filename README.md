@@ -15,7 +15,7 @@ Example usage:
 ```python
 import tokengeex
 
-tokenizer = tokengeex.load("unigram-32k.json")
+tokenizer = tokengeex.load("code-32k-strict.json")
 
 # Vocab
 print(tokenizer.vocab_size()) # 32768
@@ -45,7 +45,7 @@ Example usage:
 
 ```rust
 fn main() {
-    let tokenizer = tokengeex::load("unigram-32k.json").unwrap();
+    let tokenizer = tokengeex::load("code-32k-strict.json").unwrap();
 
     // Vocab
     println!("{}", tokenizer.vocab_size()); // 32768
@@ -77,7 +77,7 @@ Here's a sample command to train a strict 512 vocabulary on ten megabytes of dat
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --input 'data/train/code-10MB.bin' \
-    --output 'data/vocab/unigram-code-512-strict.json' \
+    --output 'data/vocab/code-512-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
     --special-token '<|CODE_MIDDLE|>' \
@@ -89,8 +89,7 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-max-words-per-token '2' \
     --vg-initial-vocab-size '2048' \
     --vg-insert-probability '0.1' \
-    --vg-strict true \
-    --sg-max-sentence-size '16'
+    --vg-strict true
 ```
 
 Here's a sample command to train a strict 4k vocabulary on a hundred megabytes of data.
@@ -98,13 +97,13 @@ Here's a sample command to train a strict 4k vocabulary on a hundred megabytes o
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --input 'data/train/code-100MB.bin' \
-    --output 'data/vocab/unigram-code-4k-strict.json' \
+    --output 'data/vocab/code-4k-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
     --special-token '<|CODE_MIDDLE|>' \
     --special-token '<|EOS|>' \
     --vocab-size 4096 \
-    --shrinking-factor '0.8' \
+    --shrinking-factor '0.7' \
     --num-sub-iterations '2' \
     --suggested-tokens-file 'data/tokens/suggested.json' \
     --added-tokens-file 'data/tokens/added.json' \
@@ -112,9 +111,8 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '100000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/vocab-4k-code-100MB-strict.json' \
-    --vg-strict true \
-    --sg-max-sentence-size '32'
+    --vg-cache 'data/cache/code-100MB-strict.json' \
+    --vg-strict true
 ```
 
 Here's a sample command to train a strict 16k vocabulary on a hundred megabytes of data.
@@ -122,13 +120,13 @@ Here's a sample command to train a strict 16k vocabulary on a hundred megabytes 
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --input 'data/train/code-100MB.bin' \
-    --output 'data/vocab/unigram-code-16k-strict.json' \
+    --output 'data/vocab/code-16k-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
     --special-token '<|CODE_MIDDLE|>' \
     --special-token '<|EOS|>' \
     --vocab-size 16384 \
-    --shrinking-factor '0.75' \
+    --shrinking-factor '0.7' \
     --num-sub-iterations '2' \
     --suggested-tokens-file 'data/tokens/suggested.json' \
     --added-tokens-file 'data/tokens/added.json' \
@@ -136,7 +134,6 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '1000000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/vocab-16k-code-100MB-strict.json' \
-    --vg-strict true \
-    --sg-max-sentence-size '40'
+    --vg-cache 'data/cache/code-100MB-strict.json' \
+    --vg-strict true
 ```

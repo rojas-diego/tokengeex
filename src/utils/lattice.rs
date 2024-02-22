@@ -339,8 +339,10 @@ impl<'a> Lattice<'a> {
 
     /// Computes the marginal probability for each node (token) which is the
     /// probability of this token being part of the optimal segmentation of the
-    /// sentence.
-    pub(crate) fn populate_marginal(&self, freq: f64, expected: &mut [f64]) -> f64 {
+    /// sentence. Returns the normalisation constant which is the probability
+    /// of reaching the end of the sentence from the beginning which in itself
+    /// corresponds to the probability of the sentence.
+    pub(crate) fn populate_marginal(&self, expected: &mut [f64]) -> f64 {
         let len = self.len();
         let n_nodes = self.nodes.len();
 
@@ -348,6 +350,8 @@ impl<'a> Lattice<'a> {
         // probabilities) vectors. They measure the log probabilities of
         // reaching a particular node (token) from the start (alpha) or end
         // (beta) of the lattice.
+        // - alpha[i] is the log probability of reaching node i from the bos
+        // - beta[i] is the log probability of reaching the eos from node i
         let mut alpha = vec![0.0; n_nodes];
         let mut beta = vec![0.0; n_nodes];
 
@@ -401,15 +405,15 @@ impl<'a> Lattice<'a> {
                 let b = beta[node_id];
 
                 // Calculate the total path probability through this node,
-                // subtract the normalization constant, then scale by the
-                // frequency and update expected frequencies
+                // subtract the normalization constant and update expected
+                // frequencies.
                 let total = a + node.borrow().score + b - z;
-                let update = freq * total.exp();
+                let update = total.exp();
                 expected[id] += update;
             }
         }
 
-        freq * z
+        z
     }
 
     #[allow(dead_code)]

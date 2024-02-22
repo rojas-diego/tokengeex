@@ -443,8 +443,11 @@ impl VocabularyGenerator {
                 for (ii, c) in suffix.char_indices().take(self.window_size) {
                     let candidate = &suffix[..ii + c.len_utf8()];
 
-                    if self.is_valid_token(candidate)
+                    // TODO: Dirty fix to avoid byte fallback tokens that we
+                    // add manually.
+                    if candidate.len() > 1
                         && rng.gen_range(0.0..1.0) < self.insert_probability
+                        && self.is_valid_token(candidate)
                     {
                         sample_tokens.insert(candidate);
                     }

@@ -88,8 +88,6 @@ impl VocabularyGenerator {
             }
         }
 
-        log::info!("Sorting tokens by frequency");
-
         // Collect the frequency of the suggested tokens.
         // TODO: Instead of relying on a default frequency of 1, we should
         // consider the frequency of the suggested tokens in the dataset. This
@@ -101,6 +99,7 @@ impl VocabularyGenerator {
             .collect::<Vec<usize>>();
 
         // Convert the tokens to a vector and sort them by frequency.
+        log::info!("Sorting tokens by frequency");
         let mut tokens: Vec<_> = tokens.into_iter().collect();
         tokens.sort_by_key(|(_, freq)| Reverse(*freq));
 
@@ -660,6 +659,9 @@ mod tests {
         assert!(!vg.is_valid_token("hello "));
         assert!(!vg.is_valid_token("hello world"));
         assert!(!vg.is_valid_token("hello world "));
+
+        assert!(vg.is_valid_token("//U "));
+        assert!(vg.is_valid_token(" - "));
 
         assert!(vg.is_valid_token(" abc"));
         assert!(vg.is_valid_token(" 123"));

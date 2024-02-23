@@ -227,12 +227,15 @@ fn train(
         .map(|s| tokengeex::capcode::encode(&String::from_utf8_lossy(s)))
         .collect();
 
+    log::info!("Extracted {} samples", samples.len());
+
     // We can dispose of the dataset to free up memory.
     drop(dataset);
 
     samples.iter().for_each(|s| trainer.feed(s));
 
     log::info!("Loaded {} samples", samples.len());
+    log::info!("Generating initial vocabulary");
 
     let initial_vocab_generator = VocabularyGenerator::new(
         vg_max_words_per_token,

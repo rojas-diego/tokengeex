@@ -1,27 +1,30 @@
-import sys
-
 from datasets import load_dataset as hf_load_dataset
 
-LANGUAGES = set(
-    [
-        "python",
-        "javascript",
-        "typescript",
-        "java",
-        "go",
-        "c++",
-        "markdown",
-    ]
-)
+
+def mb(x):
+    return x * 1024 * 1024
 
 
-the_stack_smol = hf_load_dataset("bigcode/the-stack-smol", split="train")
-
-the_stack_smol = the_stack_smol.shuffle(seed=42)
-
-
-bytes = int(sys.argv[1] if len(sys.argv) > 1 else 1024 * 1024 * 100)
-bytes_generated = 0
+langs = {
+    "python": {
+        "bytes": mb(150),
+    },
+    "javascript": {
+        "bytes": mb(150),
+    },
+    "java": {
+        "bytes": mb(150),
+    },
+    "go": {
+        "bytes": mb(150),
+    },
+    "c++": {
+        "bytes": mb(150),
+    },
+    "markdown": {
+        "bytes": mb(150),
+    },
+}
 
 
 def format_bytes(v):
@@ -32,29 +35,39 @@ def format_bytes(v):
     return f"{int(v)}PB"
 
 
-with open(f"data/train/code-{format_bytes(bytes)}.bin", "wb") as f:
-    for i, sample in enumerate(the_stack_smol):
-        lang = sample["lang"].lower()
-        avg_line_length = sample["avg_line_length"]
-        max_line_length = sample["max_line_length"]
-        alphanum_fraction = sample["alphanum_fraction"]
+total_bytes = sum(langs[lang]["bytes"] for lang in langs.keys())
+
+
+print(f"Total bytes: {total_bytes}")
+print(f"Total bytes: {format_bytes(total_bytes)}")
+
+
+github_code_clean = hf_load_dataset(
+    "codeparrot/github-code",
+    split="train",
+    trust_remote_code=True,
+    streaming=True,
+)
+
+with open(f"data/train/code-{format_bytes(total_bytes)}.bin", "wb") as f:
+    bytes = {lang: 0 for lang in langs.keys()}
+
+    for i, sample in enumerate(github_code_clean):
+        finished = True
+        for lang, b in bytes.items():
+            if b < langs[lang]["bytes"]:
+                finished = False
+                break
+
+        if finished:
+            break
 
         if (
-            lang not in LANGUAGES
-            or max_line_length > 1000
-            or alphanum_fraction < 0.5
-            or avg_line_length < 10
-            or avg_line_length > 100
+            sample["language"].lower() in langs.keys()
+            and bytes[sample["language"].lower()]
+            < langs[sample["language"].lower()]["bytes"]
+            and sample["size"] < 1000
         ):
-            continue
-
-        bytes_generated += len(sample["content"].encode("utf-8")) + 1
-
-        content = sample["content"].encode("utf-8")
-
-        f.write(content)
-
-        if bytes_generated >= bytes:
-            break
-        else:
+            bytes[sample["language"].lower()] += sample["size"] + 1
+            f.write(sample["code"].encode("utf-8"))
             f.write(b"\0")

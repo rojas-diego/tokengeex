@@ -72,31 +72,32 @@ You can install the [Rust binary crate](https://crates.io/crates/tokengeex) thro
 cargo install tokengeex --features cli
 ```
 
-Here's a sample command to train a strict 512 vocabulary on ten megabytes of data.
+Here's a sample command to train a strict 1k vocabulary on 1GB of data.
 
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-10MB.bin' \
-    --output 'data/vocab/code-512-strict.json' \
+    --input 'data/train/code-1GB.bin' \
+    --output 'data/vocab/code-1k-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
     --special-token '<|CODE_MIDDLE|>' \
     --special-token '<|EOS|>' \
-    --vocab-size 512 \
+    --vocab-size 1024 \
     --shrinking-factor '0.7' \
     --num-sub-iterations '2' \
     --vg-max-token-length '8' \
     --vg-max-words-per-token '2' \
-    --vg-initial-vocab-size '2048' \
+    --vg-initial-vocab-size '4096' \
     --vg-insert-probability '0.1' \
+    --vg-cache 'data/cache/code-4k-1GB-strict.json' \
     --vg-strict true
 ```
 
-Here's a sample command to train a strict 4k vocabulary on a hundred megabytes of data.
+Here's a sample command to train a strict 4k vocabulary on 1GB of data.
 
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-100MB.bin' \
+    --input 'data/train/code-1GB.bin' \
     --output 'data/vocab/code-4k-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
@@ -111,15 +112,15 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '100000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-100k-100MB-strict.json' \
+    --vg-cache 'data/cache/code-100k-1GB-strict.json' \
     --vg-strict true
 ```
 
-Here's a sample command to train a strict 16k vocabulary on a hundred megabytes of data.
+Here's a sample command to train a strict 16k vocabulary on 1GB of data.
 
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-100MB.bin' \
+    --input 'data/train/code-1GB.bin' \
     --output 'data/vocab/code-16k-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
@@ -134,6 +135,6 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '1000000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-1000k-100MB-strict.json' \
+    --vg-cache 'data/cache/code-1000k-1GB-strict.json' \
     --vg-strict true
 ```

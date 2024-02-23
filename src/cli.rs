@@ -1,6 +1,6 @@
 use tokengeex::{
     capcode,
-    unigram::{ScoredToken, Unigram, UnigramTrainerBuilder, VocabularyGenerator},
+    unigram::{ScoredToken, Unigram, UnigramTrainerBuilder, Vocab, VocabularyGenerator},
 };
 
 mod flags {
@@ -244,7 +244,7 @@ fn train(
     let vocab = match vg_cache {
         Some(vg_cache) => {
             if let Ok(cache) = std::fs::read_to_string(&vg_cache) {
-                let vocab = serde_json::from_str::<Vec<ScoredToken>>(&cache).unwrap();
+                let vocab: Vec<ScoredToken> = serde_json::from_str::<Vocab>(&cache).unwrap().into();
 
                 log::info!(
                     "Loaded {} tokens from cached vocab file {:?}",
@@ -263,7 +263,11 @@ fn train(
                     vg_cache
                 );
 
-                std::fs::write(&vg_cache, serde_json::to_string(&vocab).unwrap()).unwrap();
+                std::fs::write(
+                    &vg_cache,
+                    serde_json::to_string(&Vocab::from(vocab.clone())).unwrap(),
+                )
+                .unwrap();
 
                 vocab
             }

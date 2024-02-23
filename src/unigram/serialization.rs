@@ -17,16 +17,15 @@ struct SerializedScoredToken {
     encoded: Option<bool>,
 }
 
-impl Serialize for Unigram {
-    /// Serialize the Unigram model. The vocabulary is encoded
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut model = serializer.serialize_struct("Unigram", 1)?;
-        let mut serialized_vocab = Vec::with_capacity(self.vocab.len());
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A vocabulary struct, used only for serialization and deserialization.
+pub struct Vocab(Vec<SerializedScoredToken>);
 
-        for (token, score) in self.vocab.iter() {
+impl From<Vec<ScoredToken>> for Vocab {
+    fn from(vocab: Vec<ScoredToken>) -> Self {
+        let mut serialized_vocab = Vec::with_capacity(vocab.len());
+
+        for (token, score) in vocab {
             let mut encoded = None;
             let value = String::from_utf8(token.clone()).unwrap_or_else(|_| {
                 encoded = Some(true);
@@ -35,10 +34,46 @@ impl Serialize for Unigram {
 
             serialized_vocab.push(SerializedScoredToken {
                 value,
-                score: *score,
+                score,
                 encoded,
             });
         }
+
+        Vocab(serialized_vocab)
+    }
+}
+
+impl From<Vocab> for Vec<ScoredToken> {
+    fn from(vocab: Vocab) -> Self {
+        vocab
+            .0
+            .into_iter()
+            .map(
+                |SerializedScoredToken {
+                     value,
+                     score,
+                     encoded,
+                 }| {
+                    let token = if let Some(true) = encoded {
+                        BASE64_STANDARD.decode(value.as_bytes()).unwrap()
+                    } else {
+                        value.as_bytes().to_vec()
+                    };
+
+                    (token, score)
+                },
+            )
+            .collect()
+    }
+}
+
+impl Serialize for Unigram {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut model = serializer.serialize_struct("Unigram", 1)?;
+        let serialized_vocab = Vocab::from(self.vocab.clone());
 
         model.serialize_field("type", "unigram")?;
         model.serialize_field("vocab", &serialized_vocab)?;
@@ -70,7 +105,7 @@ impl<'de> Visitor<'de> for UnigramVisitor {
         V: MapAccess<'de>,
     {
         let mut model_type: Option<String> = None;
-        let mut serialized_vocab: Option<Vec<SerializedScoredToken>> = None;
+        let mut serialized_vocab: Option<Vocab> = None;
 
         while let Some(key) = map.next_key()? {
             match key {
@@ -96,17 +131,7 @@ impl<'de> Visitor<'de> for UnigramVisitor {
 
         let vocab: Vec<ScoredToken> = serialized_vocab
             .ok_or_else(|| serde::de::Error::missing_field("vocab"))?
-            .into_iter()
-            .map(|token| {
-                let value = if let Some(true) = token.encoded {
-                    BASE64_STANDARD.decode(token.value.as_bytes()).unwrap()
-                } else {
-                    token.value.as_bytes().to_vec()
-                };
-
-                (value, token.score)
-            })
-            .collect();
+            .into();
 
         Ok(Unigram::from(vocab))
     }

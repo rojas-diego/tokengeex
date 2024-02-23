@@ -8,19 +8,26 @@ import sys
 
 import numpy as np
 
-assert len(sys.argv) > 2, "Usage: python compression.py <path-to-tokenizer> [lang]"
+assert (
+    len(sys.argv) > 3
+), "Usage: python compression.py <lib> <path-to-tokenizer> [lang]"
 
-# If the tokenizer name has no extension, assume it's a HuggingFace tokenizer
-if "." not in sys.argv[1]:
+lib = sys.argv[1]
+tokenizer_path = sys.argv[2]
+langs = sys.argv[3:]
+
+if lib == "transformers":
     from transformers import AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(sys.argv[1])
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+elif lib == "tokenizers":
+    from tokenizers import Tokenizer
+
+    tokenizer = Tokenizer.from_file(tokenizer_path)
 else:
     import tokengeex
 
-    tokenizer = tokengeex.load(sys.argv[1])
-
-langs = sys.argv[2:]
+    tokenizer = tokengeex.load(tokenizer_path)  # type: ignore
 
 dataset = {
     lang: [
@@ -47,8 +54,16 @@ for lang, samples in dataset.items():
         code = sample["code"]  # type: ignore
 
         try:
-            ids = tokenizer.encode(code)
-            decoded = tokenizer.decode(ids)
+            try:
+                if lib == "tokenizers":
+                    ids = tokenizer.encode(code).ids  # type: ignore
+                    decoded = []
+                else:
+                    ids = tokenizer.encode(code)
+                    decoded = tokenizer.decode(ids)
+            except Exception as e:
+                print(e)
+                sys.exit(1)
         except:  # noqa: E722
             print("Error tokenizing")
             print("----------------------------------------")

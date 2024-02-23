@@ -13,6 +13,7 @@ use std::collections::HashMap;
 mod serialization;
 mod trainer;
 
+pub use serialization::Vocab;
 pub use trainer::*;
 
 /// An arbitrary sequence of bytes. Almost always valid UTF-8 but not

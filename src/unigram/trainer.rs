@@ -69,8 +69,8 @@ impl VocabularyGenerator {
                     // TODO: Dirty fix to avoid byte fallback tokens that we
                     // add manually.
                     if candidate.len() > 1
-                        && rng.gen_range(0.0..1.0) < self.insert_probability
                         && self.is_valid_token(candidate)
+                        && rng.gen_range(0.0..1.0) < self.insert_probability
                     {
                         sample_tokens.insert(candidate);
                     }
@@ -78,7 +78,9 @@ impl VocabularyGenerator {
             }
 
             for b in sample.bytes() {
-                byte_freq[b as usize] += 1;
+                if byte_freq[b as usize] == 0 || rng.gen_range(0.0..1.0) < self.insert_probability {
+                    byte_freq[b as usize] += 1;
+                }
             }
 
             for token in sample_tokens {
@@ -165,25 +167,26 @@ impl VocabularyGenerator {
         let mut has_ascii = false;
         let mut has_punctuation = false; // Anything non-alphanumeric.
         let mut has_non_ascii = false;
+        let mut has_capcode = false;
         let mut num_spaces = 0;
         let mut num_words = 0; // Number of whitespace separated sequences of characters.
         let mut previous_char = ' ';
 
         for c in token.chars() {
-            if !capcode::is_marker(c) {
-                if c.is_ascii() {
-                    has_ascii = true;
+            if capcode::is_marker(c) {
+                has_capcode = true;
+            } else if c.is_ascii() {
+                has_ascii = true;
 
-                    if c.is_alphanumeric() {
-                        has_word = true;
-                    } else if c.is_whitespace() {
-                        num_spaces += 1;
-                    } else {
-                        has_punctuation = true;
-                    }
+                if c.is_alphanumeric() {
+                    has_word = true;
+                } else if c.is_whitespace() {
+                    num_spaces += 1;
                 } else {
-                    has_non_ascii = true;
+                    has_punctuation = true;
                 }
+            } else {
+                has_non_ascii = true;
             }
 
             if c.is_whitespace() && !previous_char.is_whitespace() {
@@ -201,7 +204,12 @@ impl VocabularyGenerator {
             if has_ascii && has_non_ascii {
                 return false;
             }
-            if has_word && (previous_char.is_whitespace() || num_spaces > 1 || has_punctuation) {
+            if has_word
+                && (previous_char.is_whitespace()
+                    || num_spaces > 1
+                    || has_punctuation
+                    || has_capcode)
+            {
                 return false;
             }
         }
@@ -253,11 +261,11 @@ impl UnigramTrainer {
 
         while start < sentence.len() {
             // Determine the end of the current chunk without splitting a character
-            let end = if start + 32 > sentence.len() {
+            let end = if start + 64 > sentence.len() {
                 sentence.len()
             } else {
                 // Find the end that does not split a character
-                let mut end = start + 32;
+                let mut end = start + 64;
                 while !sentence.is_char_boundary(end) {
                     end += 1;
                 }
@@ -655,6 +663,8 @@ mod tests {
         assert!(!vg.is_valid_token("Hello 大家哦好"));
         assert!(!vg.is_valid_token("été"));
 
+        assert!(!vg.is_valid_token("DC name"));
+
         assert!(vg.is_valid_token("// ****"));
         assert!(vg.is_valid_token("//D"));
         assert!(vg.is_valid_token("D "));
@@ -676,5 +686,7 @@ mod tests {
         assert!(vg.is_valid_token("D "));
         assert!(vg.is_valid_token("<div>"));
         assert!(vg.is_valid_token("(D self"));
+
+        assert!(vg.is_valid_token("DC name"));
     }
 }

@@ -111,7 +111,7 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '100000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-100MB-strict.json' \
+    --vg-cache 'data/cache/code-100k-100MB-strict.json' \
     --vg-strict true
 ```
 
@@ -130,10 +130,10 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --num-sub-iterations '2' \
     --suggested-tokens-file 'data/tokens/suggested.json' \
     --added-tokens-file 'data/tokens/added.json' \
-    --vg-max-token-length '20' \
+    --vg-max-token-length '24' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '1000000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-100MB-strict.json' \
+    --vg-cache 'data/cache/code-1000k-100MB-strict.json' \
     --vg-strict true
 ```

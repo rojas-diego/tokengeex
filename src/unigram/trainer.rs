@@ -167,31 +167,31 @@ impl VocabularyGenerator {
         let mut has_ascii = false;
         let mut has_punctuation = false; // Anything non-alphanumeric.
         let mut has_non_ascii = false;
-        let mut has_capcode = false;
         let mut num_spaces = 0;
         let mut num_words = 0; // Number of whitespace separated sequences of characters.
         let mut previous_char = ' ';
-        let begins_with_space = token.starts_with(' ');
+        let begins_with_space_or_capcode =
+            token.starts_with(' ') || capcode::is_marker(token.chars().next().unwrap());
 
         for c in token.chars() {
-            if capcode::is_marker(c) {
-                has_capcode = true;
-            } else if c.is_ascii() {
-                has_ascii = true;
+            if !capcode::is_marker(c) {
+                if c.is_ascii() {
+                    has_ascii = true;
 
-                if c.is_alphanumeric() {
-                    has_word = true;
+                    if c.is_alphanumeric() {
+                        has_word = true;
 
-                    if !previous_char.is_alphanumeric() {
-                        num_words += 1;
+                        if !previous_char.is_alphanumeric() {
+                            num_words += 1;
+                        }
+                    } else if c == ' ' {
+                        num_spaces += 1;
+                    } else {
+                        has_punctuation = true;
                     }
-                } else if c == ' ' {
-                    num_spaces += 1;
                 } else {
-                    has_punctuation = true;
+                    has_non_ascii = true;
                 }
-            } else {
-                has_non_ascii = true;
             }
 
             previous_char = c;
@@ -206,14 +206,11 @@ impl VocabularyGenerator {
                 return false;
             }
             if has_word
-                && (previous_char.is_whitespace()
-                    || num_spaces > num_words
-                    || has_punctuation
-                    || has_capcode)
+                && (previous_char.is_whitespace() || num_spaces > num_words || has_punctuation)
             {
                 return false;
             }
-            if num_words > 1 && !begins_with_space {
+            if num_words > 1 && !begins_with_space_or_capcode {
                 return false;
             }
         }
@@ -688,46 +685,61 @@ mod tests {
         // Strict
         let vg = VocabularyGenerator::new(2, 2, 0.0, vec![], true);
 
-        assert!(vg.is_valid_token("hello"));
-        assert!(vg.is_valid_token(" hello world"));
-        assert!(!vg.is_valid_token("hello "));
-        assert!(!vg.is_valid_token("hello world"));
-        assert!(!vg.is_valid_token("hello world "));
+        let valid = vec![
+            "hello",
+            " hello world",
+            "//U ",
+            " - ",
+            " abc",
+            " 123",
+            "大家哦好",
+            "DC name",
+            "D getDC name",
+            "// ****",
+            "//D",
+            "D ",
+            " + ",
+            " +D ",
+            "    ",
+            "\n",
+            "\t",
+            "\n\t",
+            "\n\t\t",
+        ];
 
-        assert!(vg.is_valid_token("//U "));
-        assert!(vg.is_valid_token(" - "));
+        for token in valid {
+            assert!(vg.is_valid_token(token));
+        }
 
-        assert!(vg.is_valid_token(" abc"));
-        assert!(vg.is_valid_token(" 123"));
+        let invalid = vec![
+            "<div>",
+            "(D self",
+            "hello ",
+            "hello world",
+            "hello world ",
+            "DC name ",
+            " DC name",
+            "Hello 大家哦好",
+            "été",
+        ];
 
-        assert!(vg.is_valid_token("大家哦好"));
-        assert!(!vg.is_valid_token("Hello 大家哦好"));
-        assert!(!vg.is_valid_token("été"));
+        for token in invalid {
+            assert!(!vg.is_valid_token(token));
+        }
 
-        assert!(!vg.is_valid_token("DC name"));
-
-        assert!(vg.is_valid_token("// ****"));
-        assert!(vg.is_valid_token("//D"));
-        assert!(vg.is_valid_token("D "));
-
-        assert!(vg.is_valid_token(" + "));
-        assert!(vg.is_valid_token(" +D "));
-
-        assert!(vg.is_valid_token("    "));
-        assert!(vg.is_valid_token("\n"));
-        assert!(vg.is_valid_token("\t"));
-        assert!(vg.is_valid_token("\n\t"));
-        assert!(vg.is_valid_token("\n\t\t"));
-
-        assert!(!vg.is_valid_token("<div>"));
-        assert!(!vg.is_valid_token("(D self"));
-
+        // Unstrict
         let vg = VocabularyGenerator::new(2, 2, 0.0, vec![], false);
 
-        assert!(vg.is_valid_token("D "));
-        assert!(vg.is_valid_token("<div>"));
-        assert!(vg.is_valid_token("(D self"));
+        let valid = vec!["D ", "<div>", "(D self", "DC name"];
 
-        assert!(vg.is_valid_token("DC name"));
+        for token in valid {
+            assert!(vg.is_valid_token(token));
+        }
+
+        let invalid = vec![" more than two words "];
+
+        for token in invalid {
+            assert!(!vg.is_valid_token(token));
+        }
     }
 }

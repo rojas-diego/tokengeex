@@ -171,6 +171,7 @@ impl VocabularyGenerator {
         let mut num_spaces = 0;
         let mut num_words = 0; // Number of whitespace separated sequences of characters.
         let mut previous_char = ' ';
+        let begins_with_space = token.starts_with(' ');
 
         for c in token.chars() {
             if capcode::is_marker(c) {
@@ -180,17 +181,17 @@ impl VocabularyGenerator {
 
                 if c.is_alphanumeric() {
                     has_word = true;
-                } else if c.is_whitespace() {
+
+                    if !previous_char.is_alphanumeric() {
+                        num_words += 1;
+                    }
+                } else if c == ' ' {
                     num_spaces += 1;
                 } else {
                     has_punctuation = true;
                 }
             } else {
                 has_non_ascii = true;
-            }
-
-            if c.is_whitespace() && !previous_char.is_whitespace() {
-                num_words += 1;
             }
 
             previous_char = c;
@@ -206,10 +207,13 @@ impl VocabularyGenerator {
             }
             if has_word
                 && (previous_char.is_whitespace()
-                    || num_spaces > 1
+                    || num_spaces > num_words
                     || has_punctuation
                     || has_capcode)
             {
+                return false;
+            }
+            if num_words > 1 && !begins_with_space {
                 return false;
             }
         }
@@ -652,8 +656,9 @@ mod tests {
         let vg = VocabularyGenerator::new(2, 2, 0.0, vec![], true);
 
         assert!(vg.is_valid_token("hello"));
+        assert!(vg.is_valid_token(" hello world"));
         assert!(!vg.is_valid_token("hello "));
-        assert!(vg.is_valid_token("hello world"));
+        assert!(!vg.is_valid_token("hello world"));
         assert!(!vg.is_valid_token("hello world "));
 
         assert!(vg.is_valid_token(" abc"));

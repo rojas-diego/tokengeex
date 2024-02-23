@@ -138,3 +138,26 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-cache 'data/cache/code-1000k-1GB-strict.json' \
     --vg-strict true
 ```
+
+Here's a sample command to train a strict 32k vocabulary on 1GB of data.
+
+```bash
+RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
+    --input 'data/train/code-100MB.bin' \
+    --output 'data/vocab/code-32k-strict.json' \
+    --special-token '<|CODE_PREFIX|>' \
+    --special-token '<|CODE_SUFFIX|>' \
+    --special-token '<|CODE_MIDDLE|>' \
+    --special-token '<|EOS|>' \
+    --vocab-size 32768 \
+    --shrinking-factor '0.7' \
+    --num-sub-iterations '2' \
+    --suggested-tokens-file 'data/tokens/suggested.json' \
+    --added-tokens-file 'data/tokens/added.json' \
+    --vg-max-token-length '24' \
+    --vg-max-words-per-token '3' \
+    --vg-initial-vocab-size '1000000' \
+    --vg-insert-probability '0.01' \
+    --vg-cache 'data/cache/code-1000k-100MB-strict.json' \
+    --vg-strict true
+```

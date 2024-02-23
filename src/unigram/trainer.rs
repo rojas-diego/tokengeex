@@ -1,6 +1,7 @@
 use super::{ScoredToken, Unigram};
 use crate::{
     capcode,
+    unigram::Vocab,
     utils::{
         lattice::Lattice,
         parallelism::{current_num_threads, MaybeParallelSlice},
@@ -264,11 +265,11 @@ impl UnigramTrainer {
 
         while start < sentence.len() {
             // Determine the end of the current chunk without splitting a character
-            let end = if start + 64 > sentence.len() {
+            let end = if start + 32 > sentence.len() {
                 sentence.len()
             } else {
                 // Find the end that does not split a character
-                let mut end = start + 64;
+                let mut end = start + 32;
                 while !sentence.is_char_boundary(end) {
                     end += 1;
                 }
@@ -302,18 +303,20 @@ impl UnigramTrainer {
 
         for i in 0..usize::MAX {
             for ii in 0..self.num_sub_iterations {
+                log::info!("Running E-step iter={} subiter={}", i, ii);
                 // Compute the expected frequencies of each token. That is, how
                 // much we expect to see each token in the dataset given our
                 // current model.
                 let (objective, num_tokens, num_bytes, expected_frequencies) =
                     self.run_e_step(model);
 
+                log::info!("Running M-step iter={} subiter={}", i, ii);
                 // Using this expectation, we compute an alternative vocabulary
                 // that maximizes the likelihood of the dataset.
                 let vocab = self.run_m_step(model.vocab(), &expected_frequencies);
 
                 log::info!(
-                    "EM iter={} subiter={} vocab_size={} objective={} num_tokens={} compression={}",
+                    "Completed EM iter={} subiter={} vocab_size={} objective={} num_tokens={} compression={}",
                     i,
                     ii,
                     model.vocab_size(),
@@ -339,6 +342,134 @@ impl UnigramTrainer {
         *model = self.finalize(model);
 
         Ok(())
+    }
+
+    /// Runs the E-step of the EM algorithm for the Unigram model. It computes
+    /// the expected frequencies of each token in the vocabulary. The expected
+    /// frequency for each token is calculated by considering all possible
+    /// segmentations of each sentence into tokens, weighted by the probability
+    /// of each segmentation.
+    fn run_e_step(&self, model: &Unigram) -> (f64, u32, u32, Vec<f64>) {
+        let chunk_size = std::cmp::max(self.sentences.len() / current_num_threads(), 1);
+        let (loss, num_tokens, num_bytes, expected_frequencies): (f64, u32, u32, Vec<f64>) = self.sentences
+            .maybe_par_chunks(chunk_size)
+            .map(|chunk| {
+                // A measure of how well the model fits the data.
+                let mut loss: f64 = 0.0;
+                // How much we expect to see each token in the vocabulary
+                // in this chunk of sentences. This frequency is computed based
+                // on the probability of the token being part of optimal splits
+                // (its marginal probability).
+                let mut expected_frequencies: Vec<f64> = vec![0.0; model.vocab_size()];
+                let mut num_tokens: u32 = 0;
+                let mut num_bytes: u32 = 0;
+
+                for sentence in chunk {
+                    // Compute all the possible segmentations of the sentence.
+                    let mut lattice =
+                        Lattice::from(sentence.as_bytes(), model.vocab.len() + 1, model.vocab.len() + 2);
+                    model.populate_nodes(&mut lattice);
+
+                    let z = lattice.populate_marginal(&mut expected_frequencies);
+                    if !z.is_normal() {
+                        // Collect all the tokens that were in the lattice
+                        let tokens = lattice
+                            .begin_nodes
+                            .iter()
+                            .take(lattice.begin_nodes.len() - 1)
+                            .flat_map(|node| node.iter().map(|n| n.borrow().id))
+                            .collect::<HashSet<usize>>()
+                            .iter()
+                            .map(|id| (*id, model.vocab[*id].clone()))
+                            .collect::<Vec<_>>();
+
+                        // We log before panicking because it seems the parallelism
+                        // is causing all threads to panic at the same time.
+                        log::info!("normalization constant for sentence {:?} is f64::NaN lattice={} tokens={:?}", sentence, lattice, tokens);
+
+                        panic!("normalization constant is f64::NaN");
+                    }
+
+                    num_tokens += lattice.viterbi().len() as u32;
+                    num_bytes += sentence.len() as u32;
+                    loss -= z / (self.sentences.len() as f64);
+                }
+                (loss, num_tokens, num_bytes, expected_frequencies)
+            })
+            .reduce(
+                || (0.0, 0, 0, vec![0.0; model.vocab_size()]),
+                |(loss, ntokens, nbytes, expected), (lloss, lntokens, lnbytes, lexpected)| {
+                    (
+                        loss + lloss,
+                        ntokens + lntokens,
+                        nbytes + lnbytes,
+                        expected
+                            .iter()
+                            .zip(lexpected)
+                            .map(|(global_el, local_el)| global_el + local_el)
+                            .collect(),
+                    )
+                },
+            );
+
+        (loss, num_tokens, num_bytes, expected_frequencies)
+    }
+
+    /// Runs the M-step of the EM algorithm for the Unigram model. It computes
+    /// an alternative vocabulary based on the expected frequencies.
+    fn run_m_step(&self, vocab: &[ScoredToken], expected_frequencies: &[f64]) -> Vec<ScoredToken> {
+        assert_eq!(vocab.len(), expected_frequencies.len());
+
+        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.5;
+
+        let mut alternative_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
+
+        for (freq, (token, _)) in expected_frequencies.iter().zip(vocab) {
+            if *freq < EXPECTED_FREQUENCY_THRESHOLD {
+                continue;
+            }
+
+            alternative_vocab.push((token.clone(), *freq));
+        }
+
+        // I have no clue what's going here. A previous comment pointed to this
+        // paper:
+        // https://cs.stanford.edu/~pliang/papers/tutorial-acl2007-talk.pdf
+        let sum_token_frequencies = alternative_vocab.iter().map(|(_, c)| *c).sum::<f64>();
+        let logsum_token_frequencies = digamma(sum_token_frequencies);
+        let scores: Vec<f64> = alternative_vocab
+            .iter()
+            .map(|(_, score)| digamma(*score) - logsum_token_frequencies)
+            .collect();
+
+        // Ensure the vocabulary does not contain f64::NaN.
+        for (i, freq) in scores.iter().enumerate() {
+            if !freq.is_normal() {
+                let token = alternative_vocab[i].0.clone();
+                let freq = alternative_vocab[i].1;
+
+                // Write the alternative vocabulary to a file for debugging.
+                let vocab_len = alternative_vocab.len();
+                let vocab = Vocab::from(alternative_vocab);
+
+                std::fs::write(
+                    format!("tokengeex-dump-vocab-{}.json", vocab_len),
+                    serde_json::to_string(&vocab).unwrap(),
+                )
+                .unwrap();
+
+                panic!(
+                    "M-step: alternative vocabulary contains invalid frequency for token {:?}, {:?}: {}",
+                    token, String::from_utf8_lossy(&token), freq
+                );
+            }
+        }
+
+        alternative_vocab
+            .into_iter()
+            .zip(scores)
+            .map(|((token, _), score)| (token, score))
+            .collect()
     }
 
     /// This method returns a new vocabulary with the least useful tokens
@@ -487,103 +618,6 @@ impl UnigramTrainer {
         }
 
         pruned_vocab.to_vec()
-    }
-
-    /// Runs the E-step of the EM algorithm for the Unigram model. It computes
-    /// the expected frequencies of each token in the vocabulary. The expected
-    /// frequency for each token is calculated by considering all possible
-    /// segmentations of each sentence into tokens, weighted by the probability
-    /// of each segmentation.
-    fn run_e_step(&self, model: &Unigram) -> (f64, u32, u32, Vec<f64>) {
-        let chunk_size = std::cmp::max(self.sentences.len() / current_num_threads(), 1);
-        let (loss, num_tokens, num_bytes, expected_frequencies): (f64, u32, u32, Vec<f64>) = self.sentences
-            .maybe_par_chunks(chunk_size)
-            .map(|chunk| {
-                // A measure of how well the model fits the data.
-                let mut loss: f64 = 0.0;
-                // How much we expect to see each token in the vocabulary
-                // in this chunk of sentences. This frequency is computed based
-                // on the probability of the token being part of optimal splits
-                // (its marginal probability).
-                let mut expected_frequencies: Vec<f64> = vec![0.0; model.vocab_size()];
-                let mut num_tokens: u32 = 0;
-                let mut num_bytes: u32 = 0;
-
-                for sentence in chunk {
-                    // Compute all the possible segmentations of the sentence.
-                    let mut lattice =
-                        Lattice::from(sentence.as_bytes(), model.vocab.len() + 1, model.vocab.len() + 2);
-                    model.populate_nodes(&mut lattice);
-
-                    let z = lattice.populate_marginal(&mut expected_frequencies);
-                    if z.is_nan() {
-                        // Collect all the tokens that were in the lattice
-                        let tokens = lattice
-                            .begin_nodes
-                            .iter()
-                            .take(lattice.begin_nodes.len() - 1)
-                            .flat_map(|node| node.iter().map(|n| n.borrow().id))
-                            .collect::<HashSet<usize>>()
-                            .iter()
-                            .map(|id| (*id, model.vocab[*id].clone()))
-                            .collect::<Vec<_>>();
-
-                        panic!("normalization constant for sentence {:?} is f64::NaN lattice={} tokens={:?}", sentence, lattice, tokens);
-                    }
-
-                    num_tokens += lattice.viterbi().len() as u32;
-                    num_bytes += sentence.len() as u32;
-                    loss -= z / (self.sentences.len() as f64);
-                }
-                (loss, num_tokens, num_bytes, expected_frequencies)
-            })
-            .reduce(
-                || (0.0, 0, 0, vec![0.0; model.vocab_size()]),
-                |(loss, ntokens, nbytes, expected), (lloss, lntokens, lnbytes, lexpected)| {
-                    (
-                        loss + lloss,
-                        ntokens + lntokens,
-                        nbytes + lnbytes,
-                        expected
-                            .iter()
-                            .zip(lexpected)
-                            .map(|(global_el, local_el)| global_el + local_el)
-                            .collect(),
-                    )
-                },
-            );
-
-        (loss, num_tokens, num_bytes, expected_frequencies)
-    }
-
-    /// Runs the M-step of the EM algorithm for the Unigram model. It computes
-    /// an alternative vocabulary based on the expected frequencies.
-    fn run_m_step(&self, vocab: &[ScoredToken], expected_frequencies: &[f64]) -> Vec<ScoredToken> {
-        assert_eq!(vocab.len(), expected_frequencies.len());
-
-        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.5;
-
-        let mut alternative_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
-
-        for (freq, (token, _)) in expected_frequencies.iter().zip(vocab) {
-            if *freq < EXPECTED_FREQUENCY_THRESHOLD {
-                continue;
-            }
-
-            alternative_vocab.push((token.clone(), *freq));
-        }
-
-        // I have no clue what's going here. A previous comment pointed to this
-        // paper:
-        // https://cs.stanford.edu/~pliang/papers/tutorial-acl2007-talk.pdf
-        let sum_token_frequencies = alternative_vocab.iter().map(|(_, c)| *c).sum::<f64>();
-        let logsum_token_frequencies = digamma(sum_token_frequencies);
-        let alternative_vocab: Vec<_> = alternative_vocab
-            .into_iter()
-            .map(|(s, c)| (s, digamma(c) - logsum_token_frequencies))
-            .collect();
-
-        alternative_vocab
     }
 
     fn finalize(&self, model: &Unigram) -> Unigram {

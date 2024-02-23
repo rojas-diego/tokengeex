@@ -1,30 +1,25 @@
-from datasets import load_dataset as hf_load_dataset
+"""
+This script generates a .bin file which contain \0 separated sentences to train
+TokenGeeX tokenizers on.
+"""
 
+import json
+import sys
 
-def mb(x):
-    return x * 1024 * 1024
+bytes = (int(sys.argv[1]) * 1024 * 1024) if len(sys.argv) > 1 else 100 * 1024 * 1024
 
+lang = [
+    "c++",
+    "javascript",
+    "python",
+    "java",
+    "go",
+    "markdown",
+    "rust",
+]
 
-langs = {
-    "python": {
-        "bytes": mb(150),
-    },
-    "javascript": {
-        "bytes": mb(150),
-    },
-    "java": {
-        "bytes": mb(150),
-    },
-    "go": {
-        "bytes": mb(150),
-    },
-    "c++": {
-        "bytes": mb(150),
-    },
-    "markdown": {
-        "bytes": mb(150),
-    },
-}
+files = [f"data/raw/{lang}.jsonl" for lang in lang]
+files = [open(file, "r") for file in files]
 
 
 def format_bytes(v):
@@ -35,39 +30,17 @@ def format_bytes(v):
     return f"{int(v)}PB"
 
 
-total_bytes = sum(langs[lang]["bytes"] for lang in langs.keys())
+with open(f"data/train/code-{format_bytes(bytes)}.bin", "wb") as f:
+    bytes_written = 0
 
-
-print(f"Total bytes: {total_bytes}")
-print(f"Total bytes: {format_bytes(total_bytes)}")
-
-
-github_code_clean = hf_load_dataset(
-    "codeparrot/github-code",
-    split="train",
-    trust_remote_code=True,
-    streaming=True,
-)
-
-with open(f"data/train/code-{format_bytes(total_bytes)}.bin", "wb") as f:
-    bytes = {lang: 0 for lang in langs.keys()}
-
-    for i, sample in enumerate(github_code_clean):
-        finished = True
-        for lang, b in bytes.items():
-            if b < langs[lang]["bytes"]:
-                finished = False
-                break
-
-        if finished:
-            break
-
-        if (
-            sample["language"].lower() in langs.keys()
-            and bytes[sample["language"].lower()]
-            < langs[sample["language"].lower()]["bytes"]
-            and sample["size"] < 1000
-        ):
-            bytes[sample["language"].lower()] += sample["size"] + 1
-            f.write(sample["code"].encode("utf-8"))
+    while bytes_written < bytes:
+        # Read one line of the JSONL file.
+        for file in files:
+            line = file.readline()
+            if not line:
+                sys.exit(1)
+            sample = json.loads(line)
+            encoded = sample["code"].encode("utf-8")
+            f.write(encoded)
             f.write(b"\0")
+            bytes_written += len(encoded) + 1

@@ -688,6 +688,8 @@ mod tests {
         let valid = vec![
             "hello",
             " hello world",
+            // "don't",
+            // " shouldn't've",
             "//U ",
             " - ",
             " abc",
@@ -708,7 +710,7 @@ mod tests {
         ];
 
         for token in valid {
-            assert!(vg.is_valid_token(token));
+            assert!(vg.is_valid_token(token), "token: {:?}", token);
         }
 
         let invalid = vec![
@@ -724,7 +726,7 @@ mod tests {
         ];
 
         for token in invalid {
-            assert!(!vg.is_valid_token(token));
+            assert!(!vg.is_valid_token(token), "token: {:?}", token);
         }
 
         // Unstrict
@@ -733,13 +735,13 @@ mod tests {
         let valid = vec!["D ", "<div>", "(D self", "DC name"];
 
         for token in valid {
-            assert!(vg.is_valid_token(token));
+            assert!(vg.is_valid_token(token), "token: {:?}", token);
         }
 
         let invalid = vec![" more than two words "];
 
         for token in invalid {
-            assert!(!vg.is_valid_token(token));
+            assert!(!vg.is_valid_token(token), "token: {:?}", token);
         }
     }
 }

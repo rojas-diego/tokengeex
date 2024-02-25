@@ -15,7 +15,7 @@ Example usage:
 ```python
 import tokengeex
 
-tokenizer = tokengeex.load("unigram-32k.json")
+tokenizer = tokengeex.load("code-32k-strict.json")
 
 # Vocab
 print(tokenizer.vocab_size()) # 32768
@@ -45,7 +45,7 @@ Example usage:
 
 ```rust
 fn main() {
-    let tokenizer = tokengeex::load("unigram-32k.json").unwrap();
+    let tokenizer = tokengeex::load("code-32k-strict.json").unwrap();
 
     // Vocab
     println!("{}", tokenizer.vocab_size()); // 32768
@@ -72,18 +72,39 @@ You can install the [Rust binary crate](https://crates.io/crates/tokengeex) thro
 cargo install tokengeex --features cli
 ```
 
-Here's a sample command to train a strict 4k vocabulary on a hundred megabytes of data.
+Here's a sample command to train a strict 1k vocabulary on 250MB of data.
 
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-100MB.bin' \
-    --output 'data/vocab/unigram-code-4k-strict.json' \
+    --input 'data/train/code-250MB.bin' \
+    --output 'data/vocab/code-1k-strict.json' \
+    --special-token '<|CODE_PREFIX|>' \
+    --special-token '<|CODE_SUFFIX|>' \
+    --special-token '<|CODE_MIDDLE|>' \
+    --special-token '<|EOS|>' \
+    --vocab-size 1024 \
+    --shrinking-factor '0.7' \
+    --num-sub-iterations '2' \
+    --vg-max-token-length '8' \
+    --vg-max-words-per-token '2' \
+    --vg-initial-vocab-size '4096' \
+    --vg-insert-probability '0.01' \
+    --vg-cache 'data/cache/code-4k-250MB-strict.json' \
+    --vg-strict true
+```
+
+Here's a sample command to train a strict 4k vocabulary on 250MB of data.
+
+```bash
+RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
+    --input 'data/train/code-250MB.bin' \
+    --output 'data/vocab/code-4k-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
     --special-token '<|CODE_MIDDLE|>' \
     --special-token '<|EOS|>' \
     --vocab-size 4096 \
-    --shrinking-factor '0.8' \
+    --shrinking-factor '0.7' \
     --num-sub-iterations '2' \
     --suggested-tokens-file 'data/tokens/suggested.json' \
     --added-tokens-file 'data/tokens/added.json' \
@@ -91,31 +112,52 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '100000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/vocab-4k-code-100MB-strict.json' \
-    --vg-strict true \
-    --sg-max-sentence-size '32'
+    --vg-cache 'data/cache/code-100k-250MB-strict.json' \
+    --vg-strict true
 ```
 
-Here's a sample command to train a strict 16k vocabulary on a hundred megabytes of data.
+Here's a sample command to train a strict 16k vocabulary on 250MB of data.
 
 ```bash
 RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-100MB.bin' \
-    --output 'data/vocab/unigram-code-16k-strict.json' \
+    --input 'data/train/code-250MB.bin' \
+    --output 'data/vocab/code-16k-strict.json' \
     --special-token '<|CODE_PREFIX|>' \
     --special-token '<|CODE_SUFFIX|>' \
     --special-token '<|CODE_MIDDLE|>' \
     --special-token '<|EOS|>' \
     --vocab-size 16384 \
-    --shrinking-factor '0.75' \
+    --shrinking-factor '0.7' \
     --num-sub-iterations '2' \
     --suggested-tokens-file 'data/tokens/suggested.json' \
     --added-tokens-file 'data/tokens/added.json' \
-    --vg-max-token-length '20' \
+    --vg-max-token-length '24' \
     --vg-max-words-per-token '3' \
     --vg-initial-vocab-size '1000000' \
     --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/vocab-16k-code-100MB-strict.json' \
-    --vg-strict true \
-    --sg-max-sentence-size '40'
+    --vg-cache 'data/cache/code-1000k-250MB-strict.json' \
+    --vg-strict true
+```
+
+Here's a sample command to train a strict 32k vocabulary on 250MB of data.
+
+```bash
+RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
+    --input 'data/train/code-100MB.bin' \
+    --output 'data/vocab/code-32k-strict.json' \
+    --special-token '<|CODE_PREFIX|>' \
+    --special-token '<|CODE_SUFFIX|>' \
+    --special-token '<|CODE_MIDDLE|>' \
+    --special-token '<|EOS|>' \
+    --vocab-size 32768 \
+    --shrinking-factor '0.7' \
+    --num-sub-iterations '2' \
+    --suggested-tokens-file 'data/tokens/suggested.json' \
+    --added-tokens-file 'data/tokens/added.json' \
+    --vg-max-token-length '24' \
+    --vg-max-words-per-token '3' \
+    --vg-initial-vocab-size '1000000' \
+    --vg-insert-probability '0.01' \
+    --vg-cache 'data/cache/code-1000k-100MB-strict.json' \
+    --vg-strict true
 ```

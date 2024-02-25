@@ -1,27 +1,25 @@
+"""
+This script generates a .bin file which contain \0 separated sentences to train
+TokenGeeX tokenizers on.
+"""
+
+import json
 import sys
 
-from datasets import load_dataset as hf_load_dataset
+bytes = (int(sys.argv[1]) * 1024 * 1024) if len(sys.argv) > 1 else 100 * 1024 * 1024
 
-LANGUAGES = set(
-    [
-        "python",
-        "javascript",
-        "typescript",
-        "java",
-        "go",
-        "c++",
-        "markdown",
-    ]
-)
+lang = [
+    "c++",
+    "javascript",
+    "python",
+    "java",
+    "go",
+    "markdown",
+    "rust",
+]
 
-
-the_stack_smol = hf_load_dataset("bigcode/the-stack-smol", split="train")
-
-the_stack_smol = the_stack_smol.shuffle(seed=42)
-
-
-bytes = int(sys.argv[1] if len(sys.argv) > 1 else 1024 * 1024 * 100)
-bytes_generated = 0
+files = [f"data/raw/{lang}.jsonl" for lang in lang]
+files = [open(file, "r") for file in files]
 
 
 def format_bytes(v):
@@ -33,28 +31,16 @@ def format_bytes(v):
 
 
 with open(f"data/train/code-{format_bytes(bytes)}.bin", "wb") as f:
-    for i, sample in enumerate(the_stack_smol):
-        lang = sample["lang"].lower()
-        avg_line_length = sample["avg_line_length"]
-        max_line_length = sample["max_line_length"]
-        alphanum_fraction = sample["alphanum_fraction"]
+    bytes_written = 0
 
-        if (
-            lang not in LANGUAGES
-            or max_line_length > 1000
-            or alphanum_fraction < 0.5
-            or avg_line_length < 10
-            or avg_line_length > 100
-        ):
-            continue
-
-        bytes_generated += len(sample["content"].encode("utf-8")) + 1
-
-        content = sample["content"].encode("utf-8")
-
-        f.write(content)
-
-        if bytes_generated >= bytes:
-            break
-        else:
+    while bytes_written < bytes:
+        # Read one line of the JSONL file.
+        for file in files:
+            line = file.readline()
+            if not line:
+                sys.exit(1)
+            sample = json.loads(line)
+            encoded = sample["code"].encode("utf-8")
+            f.write(encoded)
             f.write(b"\0")
+            bytes_written += len(encoded) + 1

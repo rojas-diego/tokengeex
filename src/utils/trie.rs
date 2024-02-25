@@ -64,6 +64,7 @@ where
             let child = self.node.children.get(&label)?;
             self.node = child;
             if self.node.is_leaf {
+                // TODO: Remove the need for a clone here.
                 return Some(self.prefix.clone());
             }
         }

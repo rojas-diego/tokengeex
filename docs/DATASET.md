@@ -19,8 +19,7 @@ This document describes the composition of the training, validation and testing 
 | C#             | 0.5        | 25         | 25        |
 | PHP            | 0.5        | 25         | 25        |
 | Ruby           | 0.5        | 25         | 25        |
-| English Issues | 0.5        | 25         | 25        |
-| Chinese Issues | 0.5        | 25         | 25        |
+| Github Issues  | 0.5        | 25         | 25        |
 | Shell          | 0.2        | 10         | 10        |
 | Vue            | 0.2        | 10         | 10        |
 | Assembly       | 0.1        | 5          | 5         |

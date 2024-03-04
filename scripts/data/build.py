@@ -158,97 +158,34 @@ if __name__ == "__main__":
         region_name=args.bucket_region,
     )
 
-    for lang, (train, valid, test) in pl_quotas.items():
-        if (
-            all(
-                os.path.exists(f"{args.output}/{split}/{lang}.bin")
-                for split in ["train", "valid", "test"]
-            )
-            is False
-        ):
-            for split in ["train", "valid", "test"]:
-                os.makedirs(f"{args.output}/{split}", exist_ok=True)
+    is_done = False
 
-            written = 0
-            files = [
-                open(f"{args.output}/{split}/{lang}.bin", "wb")
-                for split in ["train", "valid", "test"]
-            ]
+    zh_written = 0
+    en_written = 0
 
-            for sample in pl_data[lang]:
-                (
-                    content,
-                    size,
-                    ext,
-                    avg_line_length,
-                    max_line_length,
-                    alphanum_fraction,
-                    path,
-                ) = (
-                    sample["content"],  # type: ignore
-                    sample["size"],  # type: ignore
-                    sample["ext"],  # type: ignore
-                    sample["avg_line_length"],  # type: ignore
-                    sample["max_line_length"],  # type: ignore
-                    sample["alphanum_fraction"],  # type: ignore
-                    sample["max_stars_repo_path"],  # type: ignore
-                )
+    for split in ["train", "valid", "test"]:
+        os.makedirs(f"{args.output}/{split}", exist_ok=True)
 
-                if avg_line_length > 100:
-                    continue
+    en_train, en_valid, en_test = map(
+        lambda x: x * (1024**2), map(int, args.en_issues_quota.split(","))
+    )
+    zh_train, zh_valid, zh_test = map(
+        lambda x: x * (1024**2), map(int, args.zh_issues_quota.split(","))
+    )
 
-                if alphanum_fraction < 0.5:
-                    continue
+    zh_files = [
+        open(f"{args.output}/{split}/zh-issues.bin", "wb")
+        for split in ["train", "valid", "test"]
+    ]
 
-                if max_line_length > 1000:
-                    continue
-
-                if written < train:
-                    f = files[0]
-                elif written < train + valid:
-                    f = files[1]
-                elif written < train + valid + test:
-                    f = files[2]
-                else:
-                    break
-
-                f.write(content.encode("utf-8"))
-                f.write(b"\0")
-                written += size
-
-            for f in files:
-                f.close()
-
-        for split in ["train", "valid", "test"]:
-            with open(f"{args.output}/{split}/{lang}.bin", "rb") as f:
-                s3.upload_fileobj(
-                    f,
-                    args.bucket,
-                    f"{args.bucket_prefix}/{split}/{lang}.bin",
-                    ExtraArgs={"ACL": "public-read"},
-                )
-
-        print(f"Uploaded {lang} data to {args.bucket}/{args.bucket_prefix}")
+    en_files = [
+        open(f"{args.output}/{split}/en-issues.bin", "wb")
+        for split in ["train", "valid", "test"]
+    ]
 
     for sample in issues:
-        for split in ["train", "valid", "test"]:
-            os.makedirs(f"{args.output}/{split}", exist_ok=True)
-
-        zh_written = 0
-        en_written = 0
-
-        en_train, en_valid, en_test = map(int, args.en_issues_quota.split(","))
-        zh_train, zh_valid, zh_test = map(int, args.zh_issues_quota.split(","))
-
-        zh_files = [
-            open(f"{args.output}/{split}/zh-issues.bin", "wb")
-            for split in ["train", "valid", "test"]
-        ]
-
-        en_files = [
-            open(f"{args.output}/{split}/en-issues.bin", "wb")
-            for split in ["train", "valid", "test"]
-        ]
+        if is_done:
+            break
 
         events = sample["events"]  # type: ignore
 
@@ -256,11 +193,14 @@ if __name__ == "__main__":
             if "text" in event:
                 text = event["text"]
 
+                if len(text) == 0:
+                    continue
+
                 chinese_prop, english_prop, latin_prop, other_prop = (
                     categorize_and_get_proportions(text)
                 )
 
-                if chinese_prop > 0.2:
+                if chinese_prop > 0.05:
                     if zh_written < zh_train:
                         f = zh_files[0]
                     elif zh_written < zh_train + zh_valid:
@@ -268,13 +208,18 @@ if __name__ == "__main__":
                     elif zh_written < zh_train + zh_valid + zh_test:
                         f = zh_files[2]
                     else:
+                        if en_written >= en_train + en_valid + en_test:
+                            is_done = True
                         break
 
+                    print(
+                        f"Wrote chinese ({zh_written:>10}/{zh_train+zh_valid+zh_test:>10} bytes)"
+                    )
                     f.write(text.encode("utf-8"))
                     f.write(b"\0")
                     zh_written += len(text)
 
-                elif english_prop > 0.8:
+                elif english_prop > 0.5:
                     if en_written < en_train:
                         f = en_files[0]
                     elif en_written < en_train + en_valid:
@@ -282,30 +227,35 @@ if __name__ == "__main__":
                     elif en_written < en_train + en_valid + en_test:
                         f = en_files[2]
                     else:
+                        if zh_written >= zh_train + zh_valid + zh_test:
+                            is_done = True
                         break
 
+                    print(
+                        f"Wrote english ({en_written:>10}/{en_train+en_valid+en_test:>10} bytes)"
+                    )
                     f.write(text.encode("utf-8"))
                     f.write(b"\0")
                     en_written += len(text)
 
-        for f in zh_files + en_files:
-            f.close()
+    for f in zh_files + en_files:
+        f.close()
 
-        for split in ["train", "valid", "test"]:
-            with open(f"{args.output}/{split}/zh-issues.bin", "rb") as f:
-                s3.upload_fileobj(
-                    f,
-                    args.bucket,
-                    f"{args.bucket_prefix}/{split}/zh-issues.bin",
-                    ExtraArgs={"ACL": "public-read"},
-                )
+    for split in ["train", "valid", "test"]:
+        with open(f"{args.output}/{split}/zh-issues.bin", "rb") as f:
+            s3.upload_fileobj(
+                f,
+                args.bucket,
+                f"{args.bucket_prefix}/{split}/zh-issues.bin",
+                ExtraArgs={"ACL": "public-read"},
+            )
 
-            with open(f"{args.output}/{split}/en-issues.bin", "rb") as f:
-                s3.upload_fileobj(
-                    f,
-                    args.bucket,
-                    f"{args.bucket_prefix}/{split}/en-issues.bin",
-                    ExtraArgs={"ACL": "public-read"},
-                )
+        with open(f"{args.output}/{split}/en-issues.bin", "rb") as f:
+            s3.upload_fileobj(
+                f,
+                args.bucket,
+                f"{args.bucket_prefix}/{split}/en-issues.bin",
+                ExtraArgs={"ACL": "public-read"},
+            )
 
-        print(f"Uploaded issues data to {args.bucket}/{args.bucket_prefix}")
+    print(f"Uploaded issues data to {args.bucket}/{args.bucket_prefix}")

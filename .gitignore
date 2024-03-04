@@ -5,7 +5,8 @@
 /target
 /Cargo.lock
 
-# Data
+# Hub
+/hub
 /data
 
 # Python Bindings

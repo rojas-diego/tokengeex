@@ -1,14 +1,11 @@
 """
 Utility script to construct the pre-training dataset form The Stack v1.2
 deduplicated dataset based on per-language quotas.
-It uploads the dataset to CloudFlare R2 as
-{bucket}/{bucket_prefix}/{split}/{lang}.bin.
 """
 
 import argparse
 import os
 
-import boto3
 import datasets
 
 
@@ -23,42 +20,6 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="The directory in which to write the temporary files",
-    )
-    parser.add_argument(
-        "--bucket",
-        type=str,
-        required=True,
-        help="The name of the bucket to upload the dataset to",
-    )
-    parser.add_argument(
-        "--bucket-endpoint",
-        type=str,
-        required=True,
-        help="The endpoint of the bucket to upload the dataset to",
-    )
-    parser.add_argument(
-        "--bucket-access-key-id",
-        type=str,
-        required=True,
-        help="The access key ID for the bucket",
-    )
-    parser.add_argument(
-        "--bucket-secret-access-key",
-        type=str,
-        required=True,
-        help="The secret access key for the bucket",
-    )
-    parser.add_argument(
-        "--bucket-region",
-        type=str,
-        required=True,
-        help="The region of the bucket to upload the dataset to",
-    )
-    parser.add_argument(
-        "--bucket-prefix",
-        type=str,
-        required=True,
-        help="Path in the bucket in which to place the .bin files",
     )
     parser.add_argument(
         "--pl-quotas",
@@ -101,14 +62,6 @@ if __name__ == "__main__":
 
     issues = datasets.load_dataset(
         "bigcode/the-stack-github-issues", split="train", streaming=True
-    )
-
-    s3 = boto3.client(
-        service_name="s3",
-        endpoint_url=args.bucket_endpoint,
-        aws_access_key_id=args.bucket_access_key_id,
-        aws_secret_access_key=args.bucket_secret_access_key,
-        region_name=args.bucket_region,
     )
 
     for lang, (train, valid, test) in pl_quotas.items():
@@ -172,16 +125,7 @@ if __name__ == "__main__":
         for f in files:
             f.close()
 
-        for split in ["train", "valid", "test"]:
-            with open(f"{args.output}/{split}/{lang}.bin", "rb") as f:
-                s3.upload_fileobj(
-                    f,
-                    args.bucket,
-                    f"{args.bucket_prefix}/{split}/{lang}.bin",
-                    ExtraArgs={"ACL": "public-read"},
-                )
-
-        print(f"Uploaded {lang} data to {args.bucket}/{args.bucket_prefix}")
+        print(f"Wrote {lang} to {args.output}")
 
     is_done = False
     written = 0
@@ -228,13 +172,4 @@ if __name__ == "__main__":
     for f in files:
         f.close()
 
-    for split in ["train", "valid", "test"]:
-        with open(f"{args.output}/{split}/issues.bin", "rb") as f:
-            s3.upload_fileobj(
-                f,
-                args.bucket,
-                f"{args.bucket_prefix}/{split}/issues.bin",
-                ExtraArgs={"ACL": "public-read"},
-            )
-
-    print(f"Uploaded issues data to {args.bucket}/{args.bucket_prefix}")
+    print(f"Wrote issues to {args.output}")

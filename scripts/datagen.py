@@ -82,9 +82,10 @@ def generate_the_stack(args, lang, quota):
         else:
             break
 
-        f.write(content.encode("utf-8"))
+        encoded = content.encode("utf-8")
+        f.write(encoded)
         f.write(b"\0")
-        written += size + 1
+        written += len(encoded) + 1
 
     for f in files:
         f.close()
@@ -94,7 +95,7 @@ def generate_the_stack(args, lang, quota):
 
 def generate_chinese_markdown(args):
     train, valid, test = map(
-        lambda x: x * (1024**2), map(int, args.issues_quota.split(","))
+        lambda x: int(x * (1024**2)), map(float, args.chinese_markdown_quota.split(","))
     )
 
     print(
@@ -116,7 +117,7 @@ def generate_chinese_markdown(args):
     written = 0
 
     for sample in chinese_markdown:
-        content = sample["content"]  # type: ignore
+        content = sample["code"]  # type: ignore
 
         if written < test:
             f = files[2]
@@ -127,9 +128,10 @@ def generate_chinese_markdown(args):
         else:
             break
 
-        f.write(content.encode("utf-8"))
+        encoded = content.encode("utf-8")
+        f.write(encoded)
         f.write(b"\0")
-        written += len(content) + 1
+        written += len(encoded) + 1
 
     for f in files:
         f.close()

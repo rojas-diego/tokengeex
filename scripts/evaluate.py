@@ -4,6 +4,7 @@ This script evaluates a tokenizer on a folder of {lang}.bin files.
 
 import argparse
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Tuple
 
@@ -106,8 +107,8 @@ if __name__ == "__main__":
     def process(snippet: str, metrics: Dict[str, np.ndarray]):
         try:
             ids = encode(snippet)
-        except Exception:
-            # print(e)
+        except Exception as e:
+            print(e, file=sys.stderr)
             return
 
         ntokens = len(ids)
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     futures = []
 
     for lang, snippets in samples.items():
-        print(f"Processing {lang}...")
+        print(f"Processing {lang}...", file=sys.stderr)
         for code in snippets:
             futures.append(pool.submit(process, code, metrics[lang]))
 

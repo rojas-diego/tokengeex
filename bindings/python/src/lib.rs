@@ -32,12 +32,12 @@ impl PyTokenizer {
 
 #[pymethods]
 impl PyTokenizer {
-    fn encode(&self, input: &str) -> Vec<u32> {
-        self.tokenizer.encode(input)
+    fn encode(&self, py: Python, input: &str) -> Vec<u32> {
+        py.allow_threads(|| self.tokenizer.encode(input))
     }
 
-    fn decode(&self, input: Vec<u32>) -> String {
-        self.tokenizer.decode(&input)
+    fn decode(&self, py: Python, input: Vec<u32>) -> String {
+        py.allow_threads(|| self.tokenizer.decode(&input))
     }
 
     fn token_to_id(&self, token: &str) -> Option<u32> {

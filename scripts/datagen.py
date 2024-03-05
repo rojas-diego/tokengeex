@@ -5,12 +5,136 @@ deduplicated dataset based on per-language quotas.
 
 import argparse
 import os
+import threading
 
 import datasets
 
 
-def mb(size: int) -> int:
-    return size * (1024**2)
+def mb(size: float) -> int:
+    return int(size * (1024**2))
+
+
+def generate_the_stack(args, lang, quota):
+    (train, valid, test) = quota
+    print(
+        f"Generating ({train / mb(1)} MB, {valid / mb(1)} MB, {test / mb(1)} MB) for {lang}"
+    )
+
+    the_stack = datasets.load_dataset(
+        "bigcode/the-stack-dedup",
+        data_dir=f"data/{lang}",
+        split="train",
+        streaming=True,
+    )
+
+    for split in ["train", "valid", "test"]:
+        os.makedirs(f"{args.output}/{split}", exist_ok=True)
+
+    written = 0
+    files = [
+        open(f"{args.output}/{split}/{lang}.bin", "wb")
+        for split in ["train", "valid", "test"]
+    ]
+
+    for sample in the_stack:
+        (
+            content,
+            size,
+            avg_line_length,
+            max_line_length,
+            alphanum_fraction,
+        ) = (
+            sample["content"],  # type: ignore
+            sample["size"],  # type: ignore
+            sample["avg_line_length"],  # type: ignore
+            sample["max_line_length"],  # type: ignore
+            sample["alphanum_fraction"],  # type: ignore
+        )
+
+        # Languages for which we may not have enough data.
+        if lang not in [
+            "cuda",
+            "cmake",
+            "llvm",
+            "matlab",
+            "nginx",
+            "elixir",
+            "jupyter-notebook",
+            "perl",
+            "toml",
+            "hcl",
+            "makefile",
+        ]:
+            if (
+                size > mb(1)
+                or avg_line_length > 100
+                or alphanum_fraction < 0.25
+                or (max_line_length > 1000 and lang != "json" and lang != "html")
+            ):
+                continue
+
+        if written < test:
+            f = files[2]
+        elif written < test + valid:
+            f = files[1]
+        elif written < test + valid + train:
+            f = files[0]
+        else:
+            break
+
+        f.write(content.encode("utf-8"))
+        f.write(b"\0")
+        written += size + 1
+
+    for f in files:
+        f.close()
+
+    print(f"Wrote {written}/{train + valid + test} for {lang} to {args.output}")
+
+
+def generate_chinese_markdown(args):
+    train, valid, test = map(
+        lambda x: x * (1024**2), map(int, args.issues_quota.split(","))
+    )
+
+    print(
+        f"Generating ({train / mb(1)} MB, {valid / mb(1)} MB, {test / mb(1)} MB) for Chinese Markdown"
+    )
+
+    chinese_markdown = datasets.load_dataset(
+        "rojas-diego/chinese-markdown", split="train", streaming=True
+    )
+
+    for split in ["train", "valid", "test"]:
+        os.makedirs(f"{args.output}/{split}", exist_ok=True)
+
+    files = [
+        open(f"{args.output}/{split}/chinese-markdown.bin", "wb")
+        for split in ["train", "valid", "test"]
+    ]
+
+    written = 0
+
+    for sample in chinese_markdown:
+        content = sample["content"]  # type: ignore
+
+        if written < test:
+            f = files[2]
+        elif written < test + valid:
+            f = files[1]
+        elif written < train + valid + test:
+            f = files[0]
+        else:
+            break
+
+        f.write(content.encode("utf-8"))
+        f.write(b"\0")
+        written += len(content) + 1
+
+    for f in files:
+        f.close()
+
+    print(f"Wrote Chinese Markdown to {args.output}")
 
 
 if __name__ == "__main__":
@@ -22,154 +146,37 @@ if __name__ == "__main__":
         help="The directory in which to write the temporary files",
     )
     parser.add_argument(
-        "--pl-quotas",
+        "--the-stack-quotas",
         type=str,
         nargs="+",
         required=True,
-        help="The quotas for each language in the form {lang}:{train_mb},{valid_mb},{test_mb}",
+        help="The quotas for each language in The Stack in the form {lang}:{train_mb},{valid_mb},{test_mb}",
     )
     parser.add_argument(
-        "--issues-quota",
+        "--chinese-markdown-quota",
         type=str,
         required=True,
-        help="The quota for Chinese issues data in the form {train_mb},{valid_mb},{test_mb}",
+        help="The quota for Chinese Markdown data in the form {train_mb},{valid_mb},{test_mb}",
     )
-
     args = parser.parse_args()
 
-    pl_quotas = [quota.split(":") for quota in args.pl_quotas]
-    pl_quotas = [(lang, tuple(quota.split(","))) for [lang, quota] in pl_quotas]
-    pl_quotas = {
-        lang: (mb(int(train_mb)), mb(int(valid_mb)), mb(int(test_mb)))
-        for lang, (train_mb, valid_mb, test_mb) in pl_quotas
-    }
-
-    print("Language   Train Valid Test")
-    for lang, (train, valid, test) in pl_quotas.items():
-        print(
-            f"{lang:<10} {int(train / mb(1)):<5} {int(valid / mb(1)):<5} {int(test / mb(1)):<5}"
-        )
-
-    pl_data = {
-        lang: datasets.load_dataset(
-            "bigcode/the-stack-dedup",
-            data_dir=f"data/{lang}",
-            split="train",
-            streaming=True,
-        )
-        for lang in pl_quotas.keys()
-    }
-
-    issues = datasets.load_dataset(
-        "bigcode/the-stack-github-issues", split="train", streaming=True
-    )
-
-    for lang, (train, valid, test) in pl_quotas.items():
-        if all(
-            os.path.exists(f"{args.output}/{split}/{lang}.bin")
-            for split in ["train", "valid", "test"]
-        ):
-            print(f"Skipping {lang} as it already exists")
-            continue
-
-        for split in ["train", "valid", "test"]:
-            os.makedirs(f"{args.output}/{split}", exist_ok=True)
-
-        written = 0
-        files = [
-            open(f"{args.output}/{split}/{lang}.bin", "wb")
-            for split in ["train", "valid", "test"]
-        ]
-
-        for sample in pl_data[lang]:
-            (
-                content,
-                size,
-                ext,
-                avg_line_length,
-                max_line_length,
-                alphanum_fraction,
-                path,
-            ) = (
-                sample["content"],  # type: ignore
-                sample["size"],  # type: ignore
-                sample["ext"],  # type: ignore
-                sample["avg_line_length"],  # type: ignore
-                sample["max_line_length"],  # type: ignore
-                sample["alphanum_fraction"],  # type: ignore
-                sample["max_stars_repo_path"],  # type: ignore
-            )
-
-            if avg_line_length > 100:
-                continue
-
-            if alphanum_fraction < 0.5:
-                continue
-
-            if max_line_length > 1000:
-                continue
-
-            if written < train:
-                f = files[0]
-            elif written < train + valid:
-                f = files[1]
-            elif written < train + valid + test:
-                f = files[2]
-            else:
-                break
-
-            f.write(content.encode("utf-8"))
-            f.write(b"\0")
-            written += size
-
-        for f in files:
-            f.close()
-
-        print(f"Wrote {lang} to {args.output}")
-
-    is_done = False
-    written = 0
-
-    for split in ["train", "valid", "test"]:
-        os.makedirs(f"{args.output}/{split}", exist_ok=True)
-
-    train, valid, test = map(
-        lambda x: x * (1024**2), map(int, args.issues_quota.split(","))
-    )
-
-    files = [
-        open(f"{args.output}/{split}/issues.bin", "wb")
-        for split in ["train", "valid", "test"]
+    the_stack_quotas = [quota.split(":") for quota in args.the_stack_quotas]
+    the_stack_quotas = [
+        (lang, tuple(quota.split(","))) for [lang, quota] in the_stack_quotas
     ]
+    the_stack_quotas = {
+        lang: (mb(float(train_mb)), mb(float(valid_mb)), mb(float(test_mb)))
+        for lang, (train_mb, valid_mb, test_mb) in the_stack_quotas
+    }
 
-    for sample in issues:
-        if is_done:
-            break
+    threads = []
 
-        events = sample["events"]  # type: ignore
+    for lang, quota in the_stack_quotas.items():
+        thread = threading.Thread(target=generate_the_stack, args=(args, lang, quota))
+        threads.append(thread)
+        thread.start()
 
-        for event in events:
-            if "text" in event:
-                text = event["text"]
+    for thread in threads:
+        thread.join()
 
-                if len(text) == 0:
-                    continue
-
-                if written < train:
-                    f = files[0]
-                elif written < train + valid:
-                    f = files[1]
-                elif written < train + valid + test:
-                    f = files[2]
-                else:
-                    is_done = True
-                    break
-
-                f.write(text.encode("utf-8"))
-                f.write(b"\0")
-                written += len(text)
-
-    for f in files:
-        f.close()
-
-    print(f"Wrote issues to {args.output}")
+    generate_chinese_markdown(args)

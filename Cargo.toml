@@ -20,6 +20,11 @@ name = "tokengeex"
 path = "src/cli.rs"
 required-features = ["cli"]
 
+[[bench]]
+name = "bench"
+path = "benches/bench.rs"
+harness = false
+
 [dependencies]
 rand = "0.8.5"
 serde = { version = "1.0.196", features = ["derive"] }
@@ -36,6 +41,7 @@ base64 = "0.21.7"
 
 [dev-dependencies]
 assert_approx_eq = "1.1"
+criterion = { version = "0.3", features = ["html_reports"] }
 
 [features]
 cli = []

@@ -63,12 +63,17 @@ impl Unigram {
     // TODO: At the moment, if there's no way to tokenize the sentence, we
     // panic. We should use an UNK token instead.
     pub(super) fn populate_nodes(&self, lattice: &mut Lattice) {
+        let mut buff = Vec::<u8>::with_capacity(256);
         let input = lattice.sentence;
 
         for pos in 0..input.len() {
             let suffix = &input[pos..];
 
-            for (id, len) in self.trie.common_prefix_search(suffix.iter().copied()) {
+            buff.clear();
+            for (id, len) in self
+                .trie
+                .common_prefix_search(suffix.iter().copied(), &mut buff)
+            {
                 let score = &self.vocab[id].1;
 
                 lattice.insert(pos, len, *score, id);
@@ -114,6 +119,7 @@ impl Model for Unigram {
     // TODO: At the moment, if there's no way to tokenize the sentence, we
     // panic. We should use an UNK token instead.
     fn encode(&self, input: &str) -> Vec<u32> {
+        let mut buff = Vec::<u8>::with_capacity(256);
         let input = input.as_bytes();
 
         #[derive(Clone, Debug)]
@@ -144,7 +150,11 @@ impl Model for Unigram {
 
             let suffix = &input[pos..];
 
-            for (id, len) in self.trie.common_prefix_search(suffix.iter().copied()) {
+            buff.clear();
+            for (id, len) in self
+                .trie
+                .common_prefix_search(suffix.iter().copied(), &mut buff)
+            {
                 let node = &dp[pos + len];
                 let score = dp[pos].score + self.vocab[id].1;
 
@@ -160,7 +170,7 @@ impl Model for Unigram {
 
         // Backtrack along the best path to recover the tokens.
         let mut pos = input.len();
-        let mut ids: Vec<u32> = vec![];
+        let mut ids: Vec<u32> = Vec::with_capacity(input.len() / 2);
 
         while pos > 0 {
             let node = &dp[pos];

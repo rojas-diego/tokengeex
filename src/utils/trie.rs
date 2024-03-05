@@ -30,25 +30,29 @@ impl<Data: Clone> Trie<Data> {
         node.data = Some(data);
     }
 
-    pub fn common_prefix_search<T>(&self, iterator: T) -> TrieIterator<Data, T>
+    pub fn common_prefix_search<'a, T>(
+        &self,
+        iterator: T,
+        prefix: &'a mut Vec<u8>,
+    ) -> TrieIterator<'_, 'a, Data, T>
     where
         T: Iterator<Item = u8>,
     {
         TrieIterator {
             node: &self.root,
-            prefix: vec![],
+            prefix,
             iterator,
         }
     }
 }
 
-pub(crate) struct TrieIterator<'a, Data, T> {
+pub(crate) struct TrieIterator<'a, 'b, Data, T> {
     node: &'a Node<Data>,
-    prefix: Vec<u8>,
+    prefix: &'b mut Vec<u8>,
     iterator: T,
 }
 
-impl<Data, T> Iterator for TrieIterator<'_, Data, T>
+impl<Data, T> Iterator for TrieIterator<'_, '_, Data, T>
 where
     Data: Clone,
     T: Iterator<Item = u8>,

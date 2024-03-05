@@ -35,7 +35,7 @@ pub type ScoredToken = (Token, f64);
 pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<Token, u32>,
-    trie: Trie<u8>,
+    trie: Trie<u8, (usize, usize)>,
 }
 
 impl Unigram {
@@ -47,7 +47,7 @@ impl Unigram {
 
         for (id, (token, _)) in vocab.iter().enumerate() {
             token_to_ids.insert(token.clone(), id as u32);
-            trie_builder.push(token);
+            trie_builder.push(token, (id, token.len()));
         }
 
         let trie = trie_builder.build();
@@ -69,11 +69,10 @@ impl Unigram {
         for pos in 0..input.len() {
             let suffix = &input[pos..];
 
-            for token in self.trie.common_prefix_search(suffix.iter().copied()) {
-                let id = *self.token_to_ids.get(&token).unwrap();
-                let score = &self.vocab[id as usize].1;
+            for (id, len) in self.trie.common_prefix_search(suffix.iter().copied()) {
+                let score = &self.vocab[id].1;
 
-                lattice.insert(pos, token.len(), *score, id as usize);
+                lattice.insert(pos, len, *score, id);
             }
         }
     }
@@ -146,14 +145,13 @@ impl Model for Unigram {
 
             let suffix = &input[pos..];
 
-            for token in self.trie.common_prefix_search(suffix.iter().copied()) {
-                let id = *self.token_to_ids.get(&token).unwrap();
-                let node = &dp[pos + token.len()];
-                let score = dp[pos].score + self.vocab[id as usize].1;
+            for (id, len) in self.trie.common_prefix_search(suffix.iter().copied()) {
+                let node = &dp[pos + len];
+                let score = dp[pos].score + self.vocab[id].1;
 
                 if node.start.is_none() || score > node.score {
-                    dp[pos + token.len()] = Node {
-                        id,
+                    dp[pos + len] = Node {
+                        id: id as u32,
                         score,
                         start: Some(pos),
                     };

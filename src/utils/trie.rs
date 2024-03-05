@@ -5,35 +5,35 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 #[derive(Default)]
-pub(crate) struct TrieBuilder<Label> {
-    trie: Trie<Label>,
+pub(crate) struct TrieBuilder<Label, Data> {
+    trie: Trie<Label, Data>,
 }
 
-impl<Label: Eq + Hash + Copy> TrieBuilder<Label> {
-    pub fn push(&mut self, element: &[Label]) {
-        self.trie.push(element);
+impl<Label: Eq + Hash + Copy, Data: Clone> TrieBuilder<Label, Data> {
+    pub fn push(&mut self, element: &[Label], data: Data) {
+        self.trie.push(element, data);
     }
 
-    pub fn build(self) -> Trie<Label> {
+    pub fn build(self) -> Trie<Label, Data> {
         self.trie
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct Trie<Label> {
-    root: Node<Label>,
+pub(crate) struct Trie<Label, Data> {
+    root: Node<Label, Data>,
 }
 
-impl<Label: Eq + Hash + Copy> Trie<Label> {
-    pub fn push(&mut self, element: &[Label]) {
+impl<Label: Eq + Hash + Copy, Data: Clone> Trie<Label, Data> {
+    pub fn push(&mut self, element: &[Label], data: Data) {
         let mut node = &mut self.root;
         for label in element.iter() {
             node = node.children.entry(*label).or_default();
         }
-        node.is_leaf = true;
+        node.data = Some(data);
     }
 
-    pub fn common_prefix_search<T>(&self, iterator: T) -> TrieIterator<Label, T>
+    pub fn common_prefix_search<T>(&self, iterator: T) -> TrieIterator<Label, Data, T>
     where
         T: Iterator<Item = Label>,
     {
@@ -45,33 +45,35 @@ impl<Label: Eq + Hash + Copy> Trie<Label> {
     }
 }
 
-pub(crate) struct TrieIterator<'a, Label, T> {
-    node: &'a Node<Label>,
+pub(crate) struct TrieIterator<'a, Label, Data, T> {
+    node: &'a Node<Label, Data>,
     prefix: Vec<Label>,
     iterator: T,
 }
 
-impl<Label, T> Iterator for TrieIterator<'_, Label, T>
+impl<Label, Data, T> Iterator for TrieIterator<'_, Label, Data, T>
 where
     Label: Eq + Hash + Copy,
+    Data: Clone,
     T: Iterator<Item = Label>,
 {
-    type Item = Vec<Label>;
+    type Item = Data;
+
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let label = self.iterator.next()?;
             self.prefix.push(label);
             let child = self.node.children.get(&label)?;
             self.node = child;
-            if self.node.is_leaf {
-                // TODO: Remove the need for a clone here.
-                return Some(self.prefix.clone());
+
+            if let Some(data) = &self.node.data {
+                return Some(data.clone());
             }
         }
     }
 }
 
-impl<Label> Default for Trie<Label> {
+impl<Label, Data> Default for Trie<Label, Data> {
     fn default() -> Self {
         Self {
             root: Node::default(),
@@ -80,15 +82,15 @@ impl<Label> Default for Trie<Label> {
 }
 
 #[derive(Clone)]
-struct Node<Label> {
-    is_leaf: bool,
-    children: HashMap<Label, Node<Label>>,
+struct Node<Label, Data> {
+    data: Option<Data>,
+    children: HashMap<Label, Node<Label, Data>>,
 }
 
-impl<Label> Default for Node<Label> {
+impl<Label, Data> Default for Node<Label, Data> {
     fn default() -> Self {
         Self {
-            is_leaf: false,
+            data: None,
             children: HashMap::new(),
         }
     }

@@ -2,6 +2,7 @@ import argparse
 import json
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 
@@ -33,9 +34,16 @@ if __name__ == "__main__":
     # Convert JSON data to pandas DataFrame
     data = pd.DataFrame.from_dict(json_data, orient="index").reset_index()
     data.rename(
-        columns={"index": "Language", "chars_per_token": "Characters per Token"},
+        columns={
+            "index": "Language",
+            "chars_per_token": "Characters per Token",
+            "nbytes": "Bytes",
+        },
         inplace=True,
     )
+
+    # Sort the data by nbytes of each language
+    data.sort_values(by="Bytes", ascending=False, inplace=True)
 
     # Plotting
     plt.figure(figsize=(12, 6))
@@ -48,12 +56,21 @@ if __name__ == "__main__":
         legend=False,
     )
     plt.gca().set_ylim(top=6)
-    plt.xticks(rotation=45, ha="right")
+    offset = 0.35  # This value might need fine-tuning
+    plt.xticks(
+        ticks=np.arange(len(data["Language"])) + offset,
+        labels=data["Language"],  # type: ignore
+        rotation=45,
+        ha="right",
+    )
     plt.title("Character per Token Ratio by Language")
     plt.tight_layout()
+    plt.xlabel("")
 
-    # Calculate the average of the y-values
-    average = data["Characters per Token"].mean()
+    # Calculate the average of the y-values (by summing all ntokens and all nchars and dividing)
+    ntokens = sum(json_data[lang]["ntokens"] for lang in json_data)
+    nchars = sum(json_data[lang]["nchars"] for lang in json_data)
+    average = nchars / ntokens
 
     # Add a red dotted line at the average
     plt.axhline(y=average, color="r", linestyle="--", label=f"Average: {average:.2f}")

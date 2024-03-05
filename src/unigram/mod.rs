@@ -18,7 +18,6 @@ pub use trainer::*;
 
 /// An arbitrary sequence of bytes. Almost always valid UTF-8 but not
 /// guaranteed.
-// TODO: Use a small-buffer-optimized implementation.
 pub type Token = Vec<u8>;
 
 /// The byte fallbacks for the first 256 ASCII characters.
@@ -35,7 +34,7 @@ pub type ScoredToken = (Token, f64);
 pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<Token, u32>,
-    trie: Trie<u8, (usize, usize)>,
+    trie: Trie<(usize, usize)>,
 }
 
 impl Unigram {

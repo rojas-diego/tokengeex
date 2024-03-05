@@ -1,11 +1,15 @@
 import os
+import sys
 import time
-from typing import Any, cast
 
 import tiktoken
-import tokengeex
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+num_threads = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+
+os.environ["TOKENIZERS_PARALLELISM"] = "1"
+os.environ["TOKENGEEX_PARALLELISM"] = "1"
+
+os.environ["RAYON_NUM_THREADS"] = str(num_threads)
 
 
 def bytes_to_mb(bytes: int) -> float:
@@ -19,36 +23,38 @@ def benchmark_batch(documents: list[str]) -> None:
     enc.encode("warmup")
 
     start = time.perf_counter_ns()
-    enc.encode_ordinary_batch(documents, num_threads=1)
+    enc.encode_ordinary_batch(documents, num_threads=num_threads)
     end = time.perf_counter_ns()
     print(
-        f"TikToken     {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e8, 2):>5}s (single thread)"
+        f"TikToken     {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e9, 2):>5}s ({'single thread' if num_threads < 2 else '{} threads'.format(num_threads)})"
     )
 
-    import transformers
+    from transformers import GPT2TokenizerFast
 
-    hf_enc = cast(Any, transformers).GPT2TokenizerFast.from_pretrained("gpt2")
+    hf_enc = GPT2TokenizerFast.from_pretrained("gpt2")
     hf_enc.model_max_length = 1e30  # silence!
     hf_enc.encode("warmup")
     start = time.perf_counter_ns()
     hf_enc(documents)
     end = time.perf_counter_ns()
     print(
-        f"HuggingFace  {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e8, 2):>5}s (single thread)"
+        f"HuggingFace  {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e9, 2):>5}s ({'single thread' if num_threads < 2 else '{} threads'.format(num_threads)})"
     )
+
+    import tokengeex
 
     tokenizer = tokengeex.load("./benches/unigram.json")  # type: ignore
 
     start = time.perf_counter_ns()
-    for document in documents:
-        tokenizer.encode(document)
+    tokenizer.encode_many(documents)
     end = time.perf_counter_ns()
-
     print(
-        f"TokenGeex    {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e8, 2):>5}s (single thread)"
+        f"TokenGeex    {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e9, 2):>5}s ({'single thread' if num_threads < 2 else '{} threads'.format(num_threads)})"
     )
 
 
-samples = open("./benches/data.bin", "rb").read().split(b"\0")
+samples = open("./benches/1MB.bin", "rb").read().split(b"\0")
+
+samples = samples * 10
 
 benchmark_batch(list(map(bytes.decode, samples)))

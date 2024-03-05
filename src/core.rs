@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
 
 use crate::{capcode, unigram::Unigram};
@@ -126,6 +127,22 @@ impl Tokenizer {
         }
 
         output
+    }
+
+    /// Encode many samples in parallel.
+    pub fn encode_many(&self, many_texts: &[&str]) -> Vec<Vec<u32>> {
+        many_texts
+            .into_par_iter()
+            .map(|text| self.encode(text))
+            .collect()
+    }
+
+    /// Decode many samples in parallel.
+    pub fn decode_many(&self, many_ids: &[Vec<u32>]) -> Vec<String> {
+        many_ids
+            .into_par_iter()
+            .map(|ids| self.decode(ids))
+            .collect()
     }
 
     pub fn token_to_id(&self, token: &str) -> Option<u32> {

@@ -54,7 +54,6 @@ From [The Stack v1.2 (Deduplicated)](https://huggingface.co/datasets/bigcode/the
 | Matlab           | 0.05       | 2.5        | 2.5       |
 | LLVM             | 0.05       | 2.5        | 2.5       |
 | Pascal           | 0.05       | 2.5        | 2.5       |
-| Jupyter Notebook | 0.05       | 2.5        | 2.5       |
 | Perl             | 0.05       | 2.5        | 2.5       |
 | TOML             | 0.05       | 2.5        | 2.5       |
 | HCL              | 0.05       | 2.5        | 2.5       |

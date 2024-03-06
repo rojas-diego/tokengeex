@@ -714,7 +714,7 @@ mod tests {
         }
 
         let invalid = vec![
-            "<div>",
+            "<D div>",
             "(D self",
             "hello ",
             "hello world",

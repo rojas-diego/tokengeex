@@ -1,7 +1,4 @@
-use tokengeex::{
-    capcode,
-    unigram::{ScoredToken, Unigram, UnigramTrainerBuilder, Vocab, VocabularyGenerator},
-};
+use tokengeex::capcode;
 
 mod flags {
     xflags::xflags! {
@@ -195,6 +192,7 @@ fn format_bytes_as_mb(bytes: u64) -> String {
 
 /// Train a new tokeniser from data.
 #[allow(clippy::too_many_arguments)]
+#[allow(unused_variables)]
 fn train(
     // --- General Purpose ---
     model: &str,
@@ -218,7 +216,6 @@ fn train(
     unigram_shrinking_factor: f64,
     unigram_num_sub_iterations: usize,
 ) {
-    assert!(model == "unigram", "Only 'unigram' model is supported");
     assert!(
         train.len() > 0,
         "At least one training dataset must be provided"
@@ -235,6 +232,43 @@ fn train(
     let train_samples = split_mmaps(&train_mmaps, &train);
     let valid_samples = split_mmaps(&valid_mmaps, &valid);
     let test_samples = split_mmaps(&test_mmaps, &test);
+
+    log::info!(
+        "Training {:?} model with {} vocabulary entries. Writing to {:?}.",
+        model,
+        vocab_size,
+        output,
+    );
+
+    for (i, disallow) in disallow.iter().enumerate() {
+        log::info!("Using disallow rule #{}: {:?}", i, disallow);
+    }
+
+    match model {
+        "unigram" => {
+            log::info!(
+                "Generating initial vocabulary of size {}",
+                unigram_initial_vocab_size
+            );
+
+            // For each training source, count token occurences.
+            // let occurences_by_source = train_samples
+            //     .iter()
+            //     .map(|samples| {
+            //         let mut occurences = std::collections::HashMap::new();
+            //         for sample in samples {
+            //             for token in sample.split_whitespace() {
+            //                 *occurences.entry(token).or_insert(0) += 1;
+            //             }
+            //         }
+            //         occurences
+            //     })
+            //     .collect();
+        }
+        _ => {
+            panic!("Model {:?} is not supported.", model);
+        }
+    }
 }
 
 fn main() {

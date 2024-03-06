@@ -6,6 +6,11 @@
     "<|CODE_MIDDLE|>",
     "<|EOS|>"
   ],
+  "processors": [
+    { "type": "crlf" },
+    { "type": "unicode", "form": "nfc" },
+    { "type": "capcode" }
+  ],
   "model": {
     "type": "unigram",
     "vocab": [

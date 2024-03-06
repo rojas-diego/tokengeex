@@ -39,6 +39,7 @@ xflags = "0.3.2"
 env_logger = "0.9"
 base64 = "0.21.7"
 memmap2 = "0.5.2"
+unicode-normalization = "0.1.23"
 
 [dev-dependencies]
 assert_approx_eq = "1.1"

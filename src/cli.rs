@@ -11,40 +11,45 @@ mod flags {
                 // --- General Purpose ---
                 /// Kind of model to train. Unigram is the only one supported.
                 required -m, --model model: String
-                /// Input dataset filepath. Must be 0x00 separated.
-                required -i, --input input: String
                 /// Output vocabulary filepath.
                 required -o, --output output: String
 
-                // --- Tokenizer ---
-                /// Special token.
-                repeated --special-token special_token: String
+                // --- Data ---
+                /// Dataset to train the tokenizer on.
+                repeated -i, --train input: String
+                /// Dataset to validate the tokenizer on.
+                repeated -v, --valid valid: String
+                /// Dataset to test the tokenizer on.
+                repeated -t, --test test: String
 
-                // --- Model Trainer Parameters ---
+                // --- Training Options ---
                 /// Desired vocabulary size.
                 required -v, --vocab-size vocab_size: usize
-                /// How much to shrink the vocabulary at each iteration.
-                optional --shrinking-factor shrinking_factor: f64
-                /// Number of sub-iterations for the EM algorithm.
-                optional --num-sub-iterations num_sub_iterations: usize
+                /// Maximum token length.
+                optional --max-token-length max_token_length: usize
+                /// A Regex which determines whether a token can be added to the
+                /// vocabulary.
+                repeated --disallow disallow: String
+
+                // --- Suggested, Added and Special Tokens ---
                 /// Suggested token file.
                 repeated --suggested-tokens-file suggested_tokens_file: String
                 /// Added token file.
                 repeated --added-tokens-file added_tokens_file: String
+                /// Special token.
+                repeated --special-token special_token: String
 
-                // --- Vocabulary Generator ---
-                /// Max length of a token in characters.
-                optional --vg-max-token-length vg_max_token_length: usize
-                /// Max number of words per token.
-                optional --vg-max-words-per-token vg_max_words_per_token: usize
+                // --- Unigram ---
                 /// The size of the initial vocabulary.
-                optional --vg-initial-vocab-size vg_initial_vocab_size: usize
+                optional --unigram-initial-vocab-size unigram_initial_vocab_size: usize
                 /// Probability of inserting a new token to the vocabulary.
-                optional --vg-insert-probability vg_insert_probability: f64
+                optional --unigram-insert-probability unigram_insert_probability: f64
                 /// Filepath where to cache the initial vocabulary.
-                optional --vg-cache vg_cache: String
-                /// Strict boolean.
-                optional --vg-strict vg_strict: bool
+                optional --unigram-initial-vocab-cache unigram_initial_vocab_cache: String
+                /// How much to shrink the vocabulary at each iteration.
+                optional --unigram-shrinking-factor unigram_shrinking_factor: f64
+                /// Number of sub-iterations for the EM algorithm.
+                optional --unigram-num-sub-iterations unigram_num_sub_iterations: usize
             }
 
             /// Encode text using a tokeniser.
@@ -148,157 +153,88 @@ fn capcode(input: Option<&str>, encode: Option<bool>, decode: Option<bool>) {
     }
 }
 
+fn mmap_files(files: &Vec<String>) -> Vec<memmap2::Mmap> {
+    files
+        .iter()
+        .map(|file| unsafe {
+            let mmap = memmap2::Mmap::map(&std::fs::File::open(file).unwrap()).unwrap();
+            log::info!(
+                "Successfuly mapped {:?} ({}).",
+                file,
+                format_bytes_as_mb(mmap.len() as u64)
+            );
+            mmap
+        })
+        .collect::<Vec<_>>()
+}
+
+fn split_mmaps<'a>(mmaps: &'a Vec<memmap2::Mmap>, files: &'a Vec<String>) -> Vec<Vec<&'a str>> {
+    mmaps
+        .iter()
+        .zip(files.iter())
+        .map(|(mmap, file)| {
+            let samples: Vec<&str> = mmap
+                .split(|&x| x == b'\0')
+                .map(|slice| {
+                    std::str::from_utf8(slice)
+                        .expect("train, valid and test samples must be valid UTF-8")
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            log::info!("Loaded {} samples from {:?}", samples.len(), file);
+
+            samples
+        })
+        .collect()
+}
+
+fn format_bytes_as_mb(bytes: u64) -> String {
+    format!("{:.2}MB", bytes as f64 / 1_000_000.0)
+}
+
 /// Train a new tokeniser from data.
 #[allow(clippy::too_many_arguments)]
 fn train(
     // --- General Purpose ---
     model: &str,
-    input: &str,
     output: &str,
-    // --- Tokenizer ---
-    special_tokens: Vec<String>,
-    // --- Model Trainer Parameters ---
+    // --- Data ---
+    train: &Vec<String>,
+    valid: &Vec<String>,
+    test: &Vec<String>,
+    // --- Training Options ---
     vocab_size: usize,
-    shrinking_factor: f64,
-    num_sub_iterations: usize,
-    suggested_tokens_files: Vec<String>,
-    added_tokens_files: Vec<String>,
-    // --- Vocabulary Generator ---
-    vg_max_token_length: usize,
-    vg_max_words_per_token: usize,
-    vg_initial_vocab_size: usize,
-    vg_insert_probability: f64,
-    vg_cache: Option<String>,
-    vg_strict: bool,
+    max_token_length: usize,
+    disallow: &Vec<String>,
+    // --- Suggested, Added and Special Tokens ---
+    suggested_tokens_files: &Vec<String>,
+    added_tokens_files: &Vec<String>,
+    special_tokens: &Vec<String>,
+    // --- Unigram ---
+    unigram_initial_vocab_size: usize,
+    unigram_insert_probability: f64,
+    unigram_initial_vocab_cache: Option<&str>,
+    unigram_shrinking_factor: f64,
+    unigram_num_sub_iterations: usize,
 ) {
     assert!(model == "unigram", "Only 'unigram' model is supported");
-
-    log::info!("Training {} model on '{}'", model, input);
-    log::info!("Special tokens: {:?}", special_tokens);
-    log::info!(
-        "Model Trainer Parameters: vocab_size={}, shrinking_factor={}, num_sub_iterations={}",
-        vocab_size,
-        shrinking_factor,
-        num_sub_iterations
-    );
-    log::info!(
-        "Vocabulary Generator: max_token_length={}, max_words_per_token={}, initial_vocab_size={}, insert_probability={}, cache={} strict={}",
-        vg_max_token_length,
-        vg_max_words_per_token,
-        vg_initial_vocab_size,
-        vg_insert_probability,
-        vg_cache.as_deref().unwrap_or("None"),
-        vg_strict
+    assert!(
+        train.len() > 0,
+        "At least one training dataset must be provided"
     );
 
-    fn collect_tokens(files: Vec<String>) -> Vec<String> {
-        files
-            .iter()
-            .flat_map(|file| {
-                let tokens =
-                    serde_json::from_str::<Vec<String>>(&std::fs::read_to_string(file).unwrap())
-                        .unwrap();
-                log::info!("Read {} tokens from {:?}", tokens.len(), file);
-                tokens
-            })
-            .collect()
-    }
+    // We mmap the training, validation and test datasets to avoid loading
+    // them into memory.
+    let train_mmaps = mmap_files(train);
+    let valid_mmaps = mmap_files(valid);
+    let test_mmaps = mmap_files(test);
 
-    let suggested_tokens = collect_tokens(suggested_tokens_files);
-    let added_tokens = collect_tokens(added_tokens_files);
-
-    let mut trainer = UnigramTrainerBuilder::default()
-        .vocab_size(vocab_size)
-        .shrinking_factor(shrinking_factor)
-        .num_sub_iterations(num_sub_iterations)
-        .added_tokens(added_tokens)
-        .build()
-        .unwrap();
-
-    let dataset = std::fs::read(input).unwrap();
-
-    log::info!("Read {} bytes from '{}'", dataset.len(), input);
-
-    // The dataset is composed of 0x00 separated samples which are UTF-8
-    // encoded. We obtain the samples by splitting the dataset on 0x00 bytes
-    // and then converting the resulting byte slices to UTF-8 strings.
-    let samples: Vec<String> = dataset
-        .split(|&b| b == 0x00)
-        .map(|s| tokengeex::capcode::encode(&String::from_utf8_lossy(s)))
-        .collect();
-
-    log::info!("Extracted {} samples", samples.len());
-
-    // We can dispose of the dataset to free up memory.
-    drop(dataset);
-
-    samples.iter().for_each(|s| trainer.feed(s));
-
-    log::info!("Loaded {} samples", samples.len());
-    log::info!("Generating initial vocabulary");
-
-    let initial_vocab_generator = VocabularyGenerator::new(
-        vg_max_words_per_token,
-        vg_max_token_length,
-        vg_insert_probability,
-        suggested_tokens,
-        vg_strict,
-    );
-    let vocab = match vg_cache {
-        Some(vg_cache) => {
-            if let Ok(cache) = std::fs::read_to_string(&vg_cache) {
-                let vocab: Vec<ScoredToken> = serde_json::from_str::<Vocab>(&cache).unwrap().into();
-
-                log::info!(
-                    "Loaded {} tokens from cached vocab file {:?}",
-                    vocab.len(),
-                    vg_cache
-                );
-
-                vocab
-            } else {
-                let vocab = initial_vocab_generator
-                    .generate_vocabulary(samples.iter().map(AsRef::as_ref), vg_initial_vocab_size);
-
-                log::info!(
-                    "Generated {} tokens and saved to {:?}",
-                    vocab.len(),
-                    vg_cache
-                );
-
-                std::fs::write(
-                    &vg_cache,
-                    serde_json::to_string(&Vocab::from(vocab.clone())).unwrap(),
-                )
-                .unwrap();
-
-                vocab
-            }
-        }
-        None => {
-            let vocab = initial_vocab_generator
-                .generate_vocabulary(samples.iter().map(AsRef::as_ref), vg_initial_vocab_size);
-
-            log::info!("Generated {} tokens", vocab.len());
-
-            vocab
-        }
-    };
-
-    log::info!("Training model");
-
-    let mut model = Unigram::default();
-    trainer.train(&mut model, vocab).unwrap();
-
-    let mut tokenizer = tokengeex::core::Tokenizer::from(model);
-
-    let special_tokens: Vec<&str> = special_tokens.iter().map(AsRef::as_ref).collect();
-
-    tokenizer.add_special_tokens(special_tokens.as_slice());
-
-    log::info!("Saving model to {:?}", output);
-
-    tokenizer.save(output).unwrap();
+    // We expect each mmaped file to be an array of 0x00 separated UTF-8
+    // strings.
+    let train_samples = split_mmaps(&train_mmaps, &train);
+    let valid_samples = split_mmaps(&valid_mmaps, &valid);
+    let test_samples = split_mmaps(&test_mmaps, &test);
 }
 
 fn main() {
@@ -309,23 +245,25 @@ fn main() {
             train(
                 // --- General Purpose ---
                 &flags.model,
-                &flags.input,
                 &flags.output,
-                // --- Tokenizer ---
-                flags.special_token,
-                // --- Model Trainer Parameters ---
+                // --- Data ---
+                &flags.train,
+                &flags.valid,
+                &flags.test,
+                // --- Training Options ---
                 flags.vocab_size,
-                flags.shrinking_factor.unwrap_or(0.75),
-                flags.num_sub_iterations.unwrap_or(4),
-                flags.suggested_tokens_file,
-                flags.added_tokens_file,
-                // --- Vocabulary Generator ---
-                flags.vg_max_token_length.unwrap_or(24),
-                flags.vg_max_words_per_token.unwrap_or(3),
-                flags.vg_initial_vocab_size.unwrap_or(100000),
-                flags.vg_insert_probability.unwrap_or(0.02),
-                flags.vg_cache,
-                flags.vg_strict.unwrap_or(false),
+                flags.max_token_length.unwrap_or(24),
+                &flags.disallow,
+                // --- Suggested, Added and Special Tokens ---
+                &flags.suggested_tokens_file,
+                &flags.added_tokens_file,
+                &flags.special_token,
+                // --- Unigram ---
+                flags.unigram_initial_vocab_size.unwrap_or(100000),
+                flags.unigram_insert_probability.unwrap_or(0.01),
+                flags.unigram_initial_vocab_cache.as_deref(),
+                flags.unigram_shrinking_factor.unwrap_or(0.75),
+                flags.unigram_num_sub_iterations.unwrap_or(2),
             );
         }
         flags::TokengeexCmd::Encode(flags) => {

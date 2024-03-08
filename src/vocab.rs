@@ -3,6 +3,10 @@ use std::collections::{HashMap, HashSet};
 use rand::Rng;
 use regex::Regex;
 
+pub const STRICT_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
+pub const BASE_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
+pub const ADVANCED_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
+
 pub struct VocabularyGenerator {
     max_token_length: usize,
     insert_probability: f64,
@@ -69,37 +73,62 @@ mod tests {
 
     #[test]
     fn test_regexes() {
-        let re = Regex::new(r#"^(?:.|\s| ?(?:[DUC]+) ?| ?[a-z]+(?: [a-z]+){0,2}| ?[0-9]{0,3})$"#)
-            .unwrap();
-        let valid = vec![
-            "hello",
-            "hello world",
-            "hello world again",
-            " hello",
-            " DU",
-            " DC",
-            " D ",
-            "DU ",
-            "DC ",
-            "D ",
-            " 1",
-            " 12",
-            "9",
-            "########",
-            "987",
-        ];
-        let invalid = vec![
-            "hello world again and again",
-            "Hello",
-            "hello world!",
-            "1234",
+        let strict = 0b00000100;
+        let base: u8 = 0b00000010;
+        let advanced = 0b00000001;
+        let none: u8 = 0;
+        let all: u8 = strict | base | advanced;
+
+        // An array of samples and whether it is a valid token for each
+        // configuration.
+        // ({token}, {bit_mask})
+        let samples = [
+            ("word", all),
+            (" word", all),
+            ("word ", none),
+            ("two words", all),
+            (" in order to", all),
+            ("123", all),
+            (" 456", all),
+            ("789 ", none),
+            ("好", all),
+            ("你好", all),
+            ("我叫罗杰斯", all),
+            ("DC complexDU casingD 123", all),
+            ("1.D 0", base | advanced),
+            (" 2.D 0", base | advanced),
+            (" 150.D 0", base | advanced),
+            (" 4.D 95", base | advanced),
+            (" users_D table", base | advanced),
+            ("1.D 0", base | advanced),
+            ("D https://D github.D com", advanced),
+            ("<D a>", all),
+            ("<DU a", all),
+            ("<D a/>", all),
+            ("<D a />", all),
         ];
 
-        for s in valid {
-            assert!(re.is_match(s), "Regex {:?} failed to match: {}", re, s);
-        }
-        for s in invalid {
-            assert!(!re.is_match(s), "Regex {:?} matched: {}", re, s);
+        let regexes = [
+            ("strict", Regex::new(STRICT_RE).unwrap(), strict),
+            ("base", Regex::new(BASE_RE).unwrap(), base),
+            ("advanced", Regex::new(ADVANCED_RE).unwrap(), advanced),
+        ];
+
+        for (token, token_mask) in samples.iter() {
+            for (name, re, re_mask) in regexes.iter() {
+                let should_match: bool = (token_mask & re_mask) != 0;
+                assert!(
+                    re.is_match(token) == should_match,
+                    "Expected {:?} {}to match {} Regex ({:?}",
+                    token,
+                    match should_match {
+                        false => "not ",
+                        true => "",
+                    },
+                    name,
+                    re
+                );
+            }
         }
     }
 }

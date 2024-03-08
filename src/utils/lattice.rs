@@ -145,6 +145,7 @@ fn log_sum_exp(x: f64, y: f64, init_mode: bool) -> f64 {
 }
 
 impl<'a> Lattice<'a> {
+    #[allow(unused)]
     pub(crate) fn from(sentence: &'a [u8], bos_id: usize, eos_id: usize) -> Self {
         let len = sentence.len();
 

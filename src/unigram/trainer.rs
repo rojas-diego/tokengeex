@@ -15,6 +15,7 @@ pub type Result<T> = std::result::Result<T, UnigramTrainerError>;
 #[derive(Debug, Error)]
 pub enum UnigramTrainerError {}
 
+#[allow(unused)]
 struct UnigramTrainer {
     sentences: Vec<String>,
     vocab_size: usize,
@@ -23,6 +24,7 @@ struct UnigramTrainer {
 }
 
 impl UnigramTrainer {
+    #[allow(unused)]
     pub fn new(vocab_size: usize, num_sub_iterations: usize, shrinking_factor: f64) -> Self {
         Self {
             sentences: Vec::new(),
@@ -32,6 +34,7 @@ impl UnigramTrainer {
         }
     }
 
+    #[allow(unused)]
     pub fn feed(&mut self, sentence: &str) {
         let mut start = 0;
 
@@ -58,6 +61,7 @@ impl UnigramTrainer {
 
     /// Train a Unigram model over a dataset of sentences using the initial
     /// specified initial vocabulary.
+    #[allow(unused)]
     pub fn train(&self, model: &mut Unigram, vocab: Vec<ScoredToken>) -> Result<()> {
         let desired_vocab_size: usize = (self.vocab_size * 11) / 10;
         let expected_loops = (((desired_vocab_size as f64).ln() - (vocab.len() as f64).ln())
@@ -424,6 +428,7 @@ fn digamma(mut x: f64) -> f64 {
     result
 }
 
+#[allow(unused)]
 fn to_log_prob(pieces: &mut [ScoredToken]) {
     let sum: f64 = pieces.iter().map(|(_, score)| score).sum();
     let logsum = sum.ln();

@@ -223,31 +223,41 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=8 tokengeex train --m
 
 Here is an example set of Regexes used to influence the initial vocabulary.
 
-| Regex                                                              | Description                                                                                                                                                      | Example                                   |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `^.$`                                                              | Any lone Unicode character.                                                                                                                                      | `a`, `好`                                 |
-| `^D?[UC]? $`                                                       | Any capcode marker.                                                                                                                                              | `DC `, `U `                               |
-| `^ ?[0-9]{1,4}$`                                                   | Any number of 4 digits or less. May begin with a space.                                                                                                          | ` 123`, `9`                               |
-| `^[\u3400-\u4DBF\u4E00-\u9FFF]+$`                                  | Any sequence of Chinese characters.                                                                                                                              | `我叫罗杰斯`                              |
-| `^ ?[a-z]+(?: [a-z]+){0,3}$`                                       | Any space separated sequence of up to 4 lowercase words. May begin with a space.                                                                                 | ` in order to`, `hello`                   |
-| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`   | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed.                                                    | `DC complexDU casingD 123`, `hello`       |
-| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z._]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$` | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots and underscores in-between words are allowed. | ` users_D table`, `1.D 0`                 |
-| `^<D?[UC]? [a-z]+(?:>\|/>\| />)?$`                                 | Any capcode-encoded XML/HTML tag, opened or closed.                                                                                                              | `<D div>`, `<DU tag`, `<D a/>`, `<D a />` |
+| Regex                                                                     | Description                                                                                                                                                                                          | Example                               |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `^.$`                                                                     | Any lone Unicode character.                                                                                                                                                                          | `a`, `好`                             |
+| `^D?[UC]? $`                                                              | Any capcode marker.                                                                                                                                                                                  | `DC `, `U `                           |
+| `^ ?[0-9]{1,4}$`                                                          | Any number of 4 digits or less. May begin with a space.                                                                                                                                              | ` 123`, `9`                           |
+| `^[\u3400-\u4DBF\u4E00-\u9FFF]+$`                                         | Any sequence of Chinese characters.                                                                                                                                                                  | `我叫罗杰斯`                          |
+| `^ ?[a-z]+(?: [a-z]+){0,3}$`                                              | Any space separated sequence of up to 4 lowercase words. May begin with a space.                                                                                                                     | ` in order to`, `hello`               |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`          | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed.                                                                                        | `DC complexDU casingD 123`            |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`       | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots and underscores in-between words are allowed.                                     | ` users_D table`, `1.D 0`             |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$` | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots, underscores, colons, dashes, slashes, and aterisks in-between words are allowed. | `D https://D github.D com`            |
+| `^<D?[UC]? [a-z]+(?:>\|/>\| />)?$`                                        | Any capcode-encoded XML/HTML tag, opened or closed.                                                                                                                                                  | `<D a>`, `<DU a`, `<D a/>`, `<D a />` |
+| `^[[:punct:][:space:][DCU]]+$`                                            | Any sequence of punctuation, whitespace, and capcode.                                                                                                                                                | `\t`, `;\n\t\t`, `(D`                 |
 
 ### Configurations
 
-#### Base
+#### Strict
 
 Allows XML/HTML tags, sequences of up to three words (letters, capcode, numbers), Chinese words, Unicode characters.
 
 ```regexp
-(?:^.$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
 ```
 
-#### Advanced
+#### Base
 
 Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots), Chinese words, Unicode characters.
 
 ```regexp
-(?:^.$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+```
+
+#### Advanced
+
+Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots, slashes, colons, dashes, asteriks), Chinese words, Unicode characters.
+
+```regexp
+(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._/:\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
 ```

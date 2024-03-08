@@ -1,4 +1,4 @@
-use crate::capcode;
+use crate::utils::capcode;
 use crate::Processor;
 use serde::{ser::SerializeStruct, Serialize};
 use unicode_normalization::UnicodeNormalization;

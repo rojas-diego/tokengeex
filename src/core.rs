@@ -19,7 +19,7 @@ pub trait Processor {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-enum ProcessorWrapper {
+pub enum ProcessorWrapper {
     Capcode(CapcodeProcessor),
     Crlf(CrlfProcessor),
     Unicode(UnicodeProcessor),
@@ -59,7 +59,7 @@ pub trait Model {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-enum ModelWrapper {
+pub enum ModelWrapper {
     Unigram(Unigram),
 }
 

@@ -1,4 +1,11 @@
-use tokengeex::capcode;
+use std::{collections::HashMap, ops::Deref};
+
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use tokengeex::{
+    CapcodeProcessor, CrlfProcessor, Processor, ProcessorWrapper, UnicodeProcessor,
+    VocabularyGenerator,
+};
+use unicode_normalization::UnicodeNormalization;
 
 mod flags {
     xflags::xflags! {
@@ -13,19 +20,26 @@ mod flags {
 
                 // --- Data ---
                 /// Dataset to train the tokenizer on.
-                repeated -i, --train input: String
+                repeated --train input: String
                 /// Dataset to validate the tokenizer on.
-                repeated -v, --valid valid: String
+                repeated --valid valid: String
                 /// Dataset to test the tokenizer on.
-                repeated -t, --test test: String
+                repeated --test test: String
+
+                // --- Processing ---
+                /// Apply a processor to the input data.
+                repeated --processor processor: String
 
                 // --- Training Options ---
                 /// Desired vocabulary size.
                 required -v, --vocab-size vocab_size: usize
                 /// Maximum token length.
                 optional --max-token-length max_token_length: usize
-                /// A Regex which determines whether a token can be added to the
-                /// vocabulary.
+                /// Substrings that match allow Regexes will be considered for
+                /// the vocabulary.
+                repeated --allow allow: String
+                /// Substrings that match disallow Regexes will not be
+                /// considered for the vocabulary.
                 repeated --disallow disallow: String
 
                 // --- Suggested, Added and Special Tokens ---
@@ -36,13 +50,15 @@ mod flags {
                 /// Special token.
                 repeated --special-token special_token: String
 
-                // --- Unigram ---
+                // --- Initial Vocab ---
                 /// The size of the initial vocabulary.
-                optional --unigram-initial-vocab-size unigram_initial_vocab_size: usize
+                optional --initial-vocab-size initial_vocab_size: usize
                 /// Probability of inserting a new token to the vocabulary.
-                optional --unigram-insert-probability unigram_insert_probability: f64
+                optional --initial-vocab-insert-probability initial_vocab_insert_probability: f64
                 /// Filepath where to cache the initial vocabulary.
-                optional --unigram-initial-vocab-cache unigram_initial_vocab_cache: String
+                optional --initial-vocab-cache initial_vocab_cache: String
+
+                // --- Unigram ---
                 /// How much to shrink the vocabulary at each iteration.
                 optional --unigram-shrinking-factor unigram_shrinking_factor: f64
                 /// Number of sub-iterations for the EM algorithm.
@@ -143,10 +159,12 @@ fn capcode(input: Option<&str>, encode: Option<bool>, decode: Option<bool>) {
         encode = true;
     }
 
+    let processor = CapcodeProcessor;
+
     if encode {
-        println!("{}", capcode::encode(&input));
+        println!("{}", processor.preprocess(&input));
     } else {
-        println!("{}", capcode::decode(&input));
+        println!("{}", processor.postprocess(&input));
     }
 }
 
@@ -192,7 +210,6 @@ fn format_bytes_as_mb(bytes: u64) -> String {
 
 /// Train a new tokeniser from data.
 #[allow(clippy::too_many_arguments)]
-#[allow(unused_variables)]
 fn train(
     // --- General Purpose ---
     model: &str,
@@ -201,18 +218,22 @@ fn train(
     train: &Vec<String>,
     valid: &Vec<String>,
     test: &Vec<String>,
+    // --- Processing ---
+    processor: &Vec<String>,
     // --- Training Options ---
     vocab_size: usize,
     max_token_length: usize,
+    allow: &Vec<String>,
     disallow: &Vec<String>,
     // --- Suggested, Added and Special Tokens ---
     suggested_tokens_files: &Vec<String>,
     added_tokens_files: &Vec<String>,
     special_tokens: &Vec<String>,
+    // --- Initial Vocabulary ---
+    initial_vocab_size: usize,
+    initial_vocab_insert_probability: f64,
+    initial_vocab_cache: Option<&str>,
     // --- Unigram ---
-    unigram_initial_vocab_size: usize,
-    unigram_insert_probability: f64,
-    unigram_initial_vocab_cache: Option<&str>,
     unigram_shrinking_factor: f64,
     unigram_num_sub_iterations: usize,
 ) {
@@ -220,6 +241,25 @@ fn train(
         train.len() > 0,
         "At least one training dataset must be provided"
     );
+
+    let processors = processor
+        .iter()
+        .map(|name| {
+            let processor = match name.as_str() {
+                "capcode" => ProcessorWrapper::Capcode(CapcodeProcessor),
+                "crlf" => ProcessorWrapper::Crlf(CrlfProcessor),
+                "nfc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfc),
+                "nfd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfd),
+                "nfkc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkc),
+                "nfkd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkd),
+                _ => panic!("Processor {:?} is not supported.", name),
+            };
+
+            log::info!("Using processor {:?}", name);
+
+            processor
+        })
+        .collect::<Vec<_>>();
 
     // We mmap the training, validation and test datasets to avoid loading
     // them into memory.
@@ -240,30 +280,50 @@ fn train(
         output,
     );
 
-    for (i, disallow) in disallow.iter().enumerate() {
-        log::info!("Using disallow rule #{}: {:?}", i, disallow);
-    }
-
     match model {
         "unigram" => {
             log::info!(
-                "Generating initial vocabulary of size {}",
-                unigram_initial_vocab_size
+                "Generating initial vocabulary of size {} (max_token_length: {}, insert_probability: {}).",
+                initial_vocab_size, max_token_length, initial_vocab_insert_probability
             );
 
-            // For each training source, count token occurences.
-            // let occurences_by_source = train_samples
-            //     .iter()
-            //     .map(|samples| {
-            //         let mut occurences = std::collections::HashMap::new();
-            //         for sample in samples {
-            //             for token in sample.split_whitespace() {
-            //                 *occurences.entry(token).or_insert(0) += 1;
-            //             }
-            //         }
-            //         occurences
-            //     })
-            //     .collect();
+            for (i, disallow) in disallow.iter().enumerate() {
+                log::info!("Using disallow rule #{}: {:?}", i, disallow);
+            }
+
+            let vocabulary_generator = VocabularyGenerator::new(
+                max_token_length,
+                initial_vocab_insert_probability,
+                allow,
+                disallow,
+            );
+
+            for (samples, source) in train_samples.iter().zip(train.iter()) {
+                log::info!("Preprocessing {:?} dataset", source);
+
+                let preprocessed_samples = samples
+                    .par_iter()
+                    .map(|s| {
+                        processors
+                            .iter()
+                            .fold(s.to_string(), |s, p| p.preprocess(&s))
+                    })
+                    .collect::<Vec<String>>();
+
+                log::info!(
+                    "Preprocessed {} samples from {:?}. Collecting frequent tokens.",
+                    preprocessed_samples.len(),
+                    source
+                );
+
+                let frequent_tokens = vocabulary_generator
+                    .collect_frequent_tokens(preprocessed_samples.iter().map(|s| s.as_str()));
+
+                log::info!(
+                    "Collected {} frequent tokens from training dataset.",
+                    frequent_tokens.len()
+                );
+            }
         }
         _ => {
             panic!("Model {:?} is not supported.", model);
@@ -284,18 +344,22 @@ fn main() {
                 &flags.train,
                 &flags.valid,
                 &flags.test,
+                // --- Processing ---
+                &flags.processor,
                 // --- Training Options ---
                 flags.vocab_size,
                 flags.max_token_length.unwrap_or(24),
+                &flags.allow,
                 &flags.disallow,
                 // --- Suggested, Added and Special Tokens ---
                 &flags.suggested_tokens_file,
                 &flags.added_tokens_file,
                 &flags.special_token,
+                // --- Initial Vocab ---
+                flags.initial_vocab_size.unwrap_or(100000),
+                flags.initial_vocab_insert_probability.unwrap_or(0.01),
+                flags.initial_vocab_cache.as_deref(),
                 // --- Unigram ---
-                flags.unigram_initial_vocab_size.unwrap_or(100000),
-                flags.unigram_insert_probability.unwrap_or(0.01),
-                flags.unigram_initial_vocab_cache.as_deref(),
                 flags.unigram_shrinking_factor.unwrap_or(0.75),
                 flags.unigram_num_sub_iterations.unwrap_or(2),
             );

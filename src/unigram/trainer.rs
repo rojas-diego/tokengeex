@@ -1,6 +1,5 @@
 use super::{ScoredToken, Unigram};
 use crate::{
-    capcode,
     unigram::Vocab,
     utils::{
         lattice::Lattice,
@@ -8,253 +7,29 @@ use crate::{
     },
     Model,
 };
-use derive_builder::Builder;
-use rand::Rng;
-use std::{
-    cmp::Reverse,
-    collections::{HashMap, HashSet},
-};
+use std::collections::HashSet;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, UnigramTrainerError>;
 
-#[derive(Debug, Clone)]
-/// Vocabulary generator is used to construct the initial vocabulary from the
-/// training dataset. This might become a trait later but right now it picks
-/// the most common substrings in the dataset and scores them based on their
-/// frequency and length.
-pub struct VocabularyGenerator {
-    words_per_token: usize,
-    window_size: usize,
-    insert_probability: f64,
-    suggested_tokens: Vec<String>,
-    strict: bool,
-}
-
-impl VocabularyGenerator {
-    // TODO: Need to validate that insert probability is between 0 and 1.
-    pub fn new(
-        words_per_token: usize,
-        window_size: usize,
-        insert_probability: f64,
-        suggested_tokens: Vec<String>,
-        strict: bool,
-    ) -> Self {
-        Self {
-            words_per_token,
-            window_size,
-            insert_probability,
-            suggested_tokens,
-            strict,
-        }
-    }
-
-    /// Generates an initial vocabulary from the given samples.
-    pub fn generate_vocabulary<'a>(
-        self,
-        samples: impl Iterator<Item = &'a str>,
-        size: usize,
-    ) -> Vec<ScoredToken> {
-        let mut tokens = HashMap::new();
-        let mut byte_freq = [0usize; 256];
-        let mut rng = rand::thread_rng();
-
-        for sample in samples {
-            let mut sample_tokens = HashSet::new();
-
-            for (i, _) in sample.char_indices() {
-                let suffix = &sample[i..];
-                for (ii, c) in suffix.char_indices().skip(1).take(self.window_size) {
-                    let candidate = &suffix[..ii + c.len_utf8()];
-
-                    // TODO: Dirty fix to avoid byte fallback tokens that we
-                    // add manually.
-                    if candidate.len() > 1
-                        && self.is_valid_token(candidate)
-                        && rng.gen_range(0.0..1.0) < self.insert_probability
-                    {
-                        sample_tokens.insert(candidate);
-                    }
-                }
-            }
-
-            for b in sample.bytes() {
-                if byte_freq[b as usize] == 0 || rng.gen_range(0.0..1.0) < self.insert_probability {
-                    byte_freq[b as usize] += 1;
-                }
-            }
-
-            for token in sample_tokens {
-                *tokens.entry(token).or_insert(0) += 1;
-            }
-        }
-
-        // Collect the frequency of the suggested tokens.
-        // TODO: Instead of relying on a default frequency of 1, we should
-        // consider the frequency of the suggested tokens in the dataset. This
-        // involves making a second pass over the dataset.
-        let suggested_tokens_freq = self
-            .suggested_tokens
-            .iter()
-            .map(|token| tokens.get(token.as_str()).copied().unwrap_or(1))
-            .collect::<Vec<usize>>();
-
-        // Convert the tokens to a vector and sort them by frequency.
-        log::info!("Sorting tokens by frequency");
-        let mut tokens: Vec<_> = tokens.into_iter().collect();
-        tokens.sort_by_key(|(_, freq)| Reverse(*freq));
-
-        // Keep track of duplicates, ensuring the earlier occurrence is kept.
-        let mut seen: HashSet<&str> = HashSet::new();
-
-        // Add all 256 ASCII characters and byte values to the initial
-        // vocabulary.
-        let mut vocab: Vec<ScoredToken> = (0..255_u8)
-            .map(|i| (vec![i], (byte_freq[i as usize] as f64) * (i as f64)))
-            .collect();
-
-        // Add the suggested tokens.
-        for (i, token) in self.suggested_tokens.iter().enumerate() {
-            if !seen.contains(token.as_str()) {
-                seen.insert(token);
-                vocab.push((
-                    token.as_bytes().to_vec(),
-                    (suggested_tokens_freq[i] as f64) * (token.len() as f64),
-                ));
-            }
-        }
-
-        // We further add the most frequent substrings.
-        for (token, freq) in tokens {
-            if vocab.len() >= size {
-                break;
-            }
-
-            if !seen.contains(token) {
-                vocab.push((token.as_bytes().to_vec(), (freq * token.len()) as f64));
-            }
-
-            seen.insert(token);
-        }
-
-        // Sort the vocabulary by score.
-        vocab.sort_by(|(_, a), (_, b)| {
-            a.partial_cmp(b)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .reverse()
-        });
-
-        // Convert the scores to log probabilities.
-        to_log_prob(&mut vocab);
-
-        // Computing log probabilities generates NaNs for items where freq=0.
-        vocab.iter_mut().for_each(|(_, score)| {
-            if !score.is_normal() {
-                *score = 0.0;
-            }
-        });
-
-        vocab
-    }
-
-    /// Checks whether the given token is valid.
-    pub fn is_valid_token(&self, token: &str) -> bool {
-        if token.is_empty() {
-            return false;
-        }
-
-        let mut has_word = false; // Any alphanumeric sequence.
-        let mut has_ascii = false;
-        let mut has_punctuation = false; // Anything non-alphanumeric.
-        let mut has_non_ascii = false;
-        let mut num_spaces = 0;
-        let mut num_words = 0; // Number of whitespace separated sequences of characters.
-        let mut previous_char = ' ';
-        let begins_with_space_or_capcode =
-            token.starts_with(' ') || capcode::is_marker(token.chars().next().unwrap());
-
-        for c in token.chars() {
-            if !capcode::is_marker(c) {
-                if c.is_ascii() {
-                    has_ascii = true;
-
-                    if c.is_alphanumeric() {
-                        has_word = true;
-
-                        if !previous_char.is_alphanumeric() {
-                            num_words += 1;
-                        }
-                    } else if c == ' ' {
-                        num_spaces += 1;
-                    } else {
-                        has_punctuation = true;
-                    }
-                } else {
-                    has_non_ascii = true;
-                }
-            }
-
-            previous_char = c;
-        }
-
-        if num_words > self.words_per_token {
-            return false;
-        }
-
-        if self.strict {
-            if has_ascii && has_non_ascii {
-                return false;
-            }
-            if has_word
-                && (previous_char.is_whitespace() || num_spaces > num_words || has_punctuation)
-            {
-                return false;
-            }
-            if num_words > 1 && !begins_with_space_or_capcode {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
-#[non_exhaustive]
-#[derive(Builder, Clone)]
-pub struct UnigramTrainer {
-    #[builder(default = "8000")]
-    pub vocab_size: usize,
-    #[builder(default = "2")]
-    pub num_sub_iterations: usize,
-    #[builder(default = "0.75")]
-    pub shrinking_factor: f64,
-    #[builder(default = "16")]
-    pub max_token_length: usize,
-    #[builder(default = "1_000_000")]
-    pub initial_vocab_size: usize,
-    #[builder(default = "HashSet::new()")]
-    pub initial_alphabet: HashSet<char>,
-    #[builder(default = "vec![]")]
-    pub suggested_tokens: Vec<String>,
-    #[builder(default = "vec![]")]
-    pub added_tokens: Vec<String>,
-
-    #[builder(default = "Vec::new()")]
-    sentences: Vec<String>,
-}
-
-impl Default for UnigramTrainer {
-    fn default() -> Self {
-        Self::builder().build().unwrap()
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum UnigramTrainerError {}
 
+struct UnigramTrainer {
+    sentences: Vec<String>,
+    vocab_size: usize,
+    num_sub_iterations: usize,
+    shrinking_factor: f64,
+}
+
 impl UnigramTrainer {
-    pub fn builder() -> UnigramTrainerBuilder {
-        UnigramTrainerBuilder::default()
+    pub fn new(vocab_size: usize, num_sub_iterations: usize, shrinking_factor: f64) -> Self {
+        Self {
+            sentences: Vec::new(),
+            vocab_size,
+            num_sub_iterations,
+            shrinking_factor,
+        }
     }
 
     pub fn feed(&mut self, sentence: &str) {
@@ -654,94 +429,5 @@ fn to_log_prob(pieces: &mut [ScoredToken]) {
     let logsum = sum.ln();
     for (_, score) in pieces.iter_mut() {
         *score = score.ln() - logsum;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use assert_approx_eq::assert_approx_eq;
-
-    #[test]
-    fn test_to_log_prob() {
-        let mut a = vec![(vec![], 1.0), (vec![], 2.0)];
-        to_log_prob(&mut a);
-        let scores = a.iter().map(|(_, score)| *score).collect::<Vec<_>>();
-        // ln(1) - ln(3)
-        assert_approx_eq!(scores[0], -1.098, 0.01);
-        // ln(2) - ln(3)
-        assert_approx_eq!(scores[1], -0.405, 0.01);
-
-        let mut a = vec![(vec![], 0.0), (vec![], 3.0)];
-        to_log_prob(&mut a);
-        let scores = a.iter().map(|(_, score)| *score).collect::<Vec<_>>();
-        // ln(0) - ln(3)
-        assert_eq!(scores[0], f64::NEG_INFINITY);
-    }
-
-    #[test]
-    fn test_vocab_generator_is_valid_token() {
-        // Strict
-        let vg = VocabularyGenerator::new(2, 2, 0.0, vec![], true);
-
-        let valid = vec![
-            "hello",
-            " hello world",
-            // "don't",
-            // " shouldn't've",
-            "//U ",
-            " - ",
-            " abc",
-            " 123",
-            "大家哦好",
-            "DC name",
-            "D getDC name",
-            "// ****",
-            "//D",
-            "D ",
-            " + ",
-            " +D ",
-            "    ",
-            "\n",
-            "\t",
-            "\n\t",
-            "\n\t\t",
-        ];
-
-        for token in valid {
-            assert!(vg.is_valid_token(token), "token: {:?}", token);
-        }
-
-        let invalid = vec![
-            "<D div>",
-            "(D self",
-            "hello ",
-            "hello world",
-            "hello world ",
-            "DC name ",
-            " DC name",
-            "Hello 大家哦好",
-            "été",
-        ];
-
-        for token in invalid {
-            assert!(!vg.is_valid_token(token), "token: {:?}", token);
-        }
-
-        // Unstrict
-        let vg = VocabularyGenerator::new(2, 2, 0.0, vec![], false);
-
-        let valid = vec!["D ", "<div>", "(D self", "DC name"];
-
-        for token in valid {
-            assert!(vg.is_valid_token(token), "token: {:?}", token);
-        }
-
-        let invalid = vec![" more than two words "];
-
-        for token in invalid {
-            assert!(!vg.is_valid_token(token), "token: {:?}", token);
-        }
     }
 }

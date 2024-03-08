@@ -39,7 +39,6 @@ pub struct Unigram {
 
 impl Unigram {
     /// Create a new `Unigram` model from a vocabulary of scored tokens.
-    // TODO: Should take a UNK token as an argument.
     pub fn from(vocab: Vec<ScoredToken>) -> Self {
         let mut token_to_ids: HashMap<Token, u32> = HashMap::new();
         let mut trie_builder = TrieBuilder::default();
@@ -116,8 +115,6 @@ impl<'a> Iterator for UnigramIterator<'a> {
 impl Model for Unigram {
     /// Encode the input sequence into a sequence of token IDs in O(n) time
     /// using the SentencePiece DP algorithm.
-    // TODO: At the moment, if there's no way to tokenize the sentence, we
-    // panic. We should use an UNK token instead.
     fn encode(&self, input: &str) -> Vec<u32> {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = input.as_bytes();

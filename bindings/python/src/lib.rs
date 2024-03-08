@@ -1,24 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::*;
 
-#[pyfunction]
-#[pyo3(name = "encode")]
-fn tokengeex_capcode_encode_py(input: &str) -> PyResult<String> {
-    Ok(tokengeex::capcode::encode(input))
-}
-
-#[pyfunction]
-#[pyo3(name = "decode")]
-fn tokengeex_capcode_decode_py(input: &str) -> PyResult<String> {
-    Ok(tokengeex::capcode::decode(input))
-}
-
-#[pyfunction]
-#[pyo3(name = "is_marker")]
-fn tokengeex_capcode_is_marker_py(c: char) -> PyResult<bool> {
-    Ok(tokengeex::capcode::is_marker(c))
-}
-
 #[pyclass(dict, module = "tokengeex", name = "Tokenizer")]
 #[derive(Clone)]
 struct PyTokenizer {
@@ -107,14 +89,7 @@ fn tokengeex_load_py(filename: &str) -> PyResult<PyTokenizer> {
 
 #[pymodule]
 #[pyo3(name = "tokengeex")]
-fn tokengeex_module(py: Python, m: &PyModule) -> PyResult<()> {
-    // Submodule: Capcode
-    let capcode = PyModule::new(py, "capcode")?;
-    capcode.add_function(wrap_pyfunction!(tokengeex_capcode_encode_py, capcode)?)?;
-    capcode.add_function(wrap_pyfunction!(tokengeex_capcode_decode_py, capcode)?)?;
-    capcode.add_function(wrap_pyfunction!(tokengeex_capcode_is_marker_py, capcode)?)?;
-    m.add_submodule(capcode)?;
-
+fn tokengeex_module(_: Python, m: &PyModule) -> PyResult<()> {
     // Module: TokenGeeX
     m.add_function(wrap_pyfunction!(tokengeex_load_py, m)?)?;
 

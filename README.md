@@ -78,6 +78,10 @@ Here's the full command used to train vocabularies.
 RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=8 tokengeex train --model 'unigram' \
     --output 'vocab.json' \
     --vocab-size 65536 \
+    --processor nfc \
+    --processor crlf \
+    --processor capcode \
+    --allow '^(?:.|\s| ?(?:[DUC]+) ?| ?[a-z]+(?: [a-z]+){0,2}| ?[0-9]{1,3})$' \
     --train './hub/data/train/assembly.bin' \
     --train './hub/data/train/cuda.bin' \
     --train './hub/data/train/hcl.bin' \
@@ -213,4 +217,29 @@ RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=8 tokengeex train --m
     --test './hub/data/test/perl.bin' \
     --test './hub/data/test/scala.bin' \
     --test './hub/data/test/vue.bin'
+```
+
+### Regexes
+
+Here is an example set of Regexes used to influence the initial vocabulary.
+
+| Regex                                                              | Description                                                                                                                                                      | Example                                   |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `^.$`                                                              | Any lone Unicode character.                                                                                                                                      | `a`, `好`                                 |
+| `^D?[UC]? $`                                                       | Any capcode marker.                                                                                                                                              | `DC `, `U `                               |
+| `^ ?[0-9]{1,4}$`                                                   | Any number of 4 digits or less. May begin with a space.                                                                                                          | ` 123`, `9`                               |
+| `^[\u3400-\u4DBF\u4E00-\u9FFF]+$`                                  | Any sequence of Chinese characters.                                                                                                                              | `我叫罗杰斯`                              |
+| `^ ?[a-z]+(?: [a-z]+){0,3}$`                                       | Any space separated sequence of up to 4 lowercase words. May begin with a space.                                                                                 | ` in order to`, `hello`                   |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`   | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed.                                                    | `DC complexDU casingD 123`, `hello`       |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z._]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$` | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots and underscores in-between words are allowed. | ` users_D table`, `1.D 0`                 |
+| `^<D?[UC]? [a-z]+(?:>\|/>\| />)?$`                                 | Any capcode-encoded XML/HTML tag, opened or closed.                                                                                                              | `<D div>`, `<DU tag`, `<D a/>`, `<D a />` |
+
+### Configurations
+
+#### Advanced
+
+Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots), Chinese words, Unicode characters.
+
+```regexp
+(?:^.$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
 ```

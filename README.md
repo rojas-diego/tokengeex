@@ -236,6 +236,14 @@ Here is an example set of Regexes used to influence the initial vocabulary.
 
 ### Configurations
 
+#### Base
+
+Allows XML/HTML tags, sequences of up to three words (letters, capcode, numbers), Chinese words, Unicode characters.
+
+```regexp
+(?:^.$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+```
+
 #### Advanced
 
 Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots), Chinese words, Unicode characters.

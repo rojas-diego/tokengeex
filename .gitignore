@@ -7,7 +7,6 @@
 
 # Hub
 /hub
-/data
 
 # Python Bindings
 /bindings/python/**/__pycache__

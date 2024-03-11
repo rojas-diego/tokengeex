@@ -76,147 +76,25 @@ Here's the full command used to train vocabularies.
 
 ```shell
 RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=8 tokengeex train --model 'unigram' \
-    --output 'vocab.json' \
-    --vocab-size 65536 \
     --processor nfc \
     --processor crlf \
     --processor capcode \
-    --allow '^(?:.|\s| ?(?:[DUC]+) ?| ?[a-z]+(?: [a-z]+){0,2}| ?[0-9]{1,3})$' \
-    --train './hub/data/train/assembly.bin' \
-    --train './hub/data/train/cuda.bin' \
-    --train './hub/data/train/hcl.bin' \
-    --train './hub/data/train/kotlin.bin' \
-    --train './hub/data/train/php.bin' \
-    --train './hub/data/train/shell.bin' \
-    --train './hub/data/train/xml.bin' \
-    --train './hub/data/train/c-sharp.bin' \
-    --train './hub/data/train/dart.bin' \
-    --train './hub/data/train/html.bin' \
-    --train './hub/data/train/llvm.bin' \
-    --train './hub/data/train/powershell.bin' \
-    --train './hub/data/train/sql.bin' \
-    --train './hub/data/train/yaml.bin' \
-    --train './hub/data/train/c.bin' \
-    --train './hub/data/train/diff.bin' \
-    --train './hub/data/train/java.bin' \
-    --train './hub/data/train/lua.bin' \
-    --train './hub/data/train/python.bin' \
-    --train './hub/data/train/swift.bin' \
-    --train './hub/data/train/zig.bin' \
-    --train './hub/data/train/chinese-markdown.bin' \
-    --train './hub/data/train/dockerfile.bin' \
-    --train './hub/data/train/javascript.bin' \
-    --train './hub/data/train/makefile.bin' \
-    --train './hub/data/train/r.bin' \
-    --train './hub/data/train/tex.bin' \
-    --train './hub/data/train/cmake.bin' \
-    --train './hub/data/train/elixir.bin' \
-    --train './hub/data/train/json.bin' \
-    --train './hub/data/train/markdown.bin' \
-    --train './hub/data/train/ruby.bin' \
-    --train './hub/data/train/toml.bin' \
-    --train './hub/data/train/cpp.bin' \
-    --train './hub/data/train/go.bin' \
-    --train './hub/data/train/jsx.bin' \
-    --train './hub/data/train/pascal.bin' \
-    --train './hub/data/train/rust.bin' \
-    --train './hub/data/train/typescript.bin' \
-    --train './hub/data/train/css.bin' \
-    --train './hub/data/train/haskell.bin' \
-    --train './hub/data/train/julia.bin' \
-    --train './hub/data/train/perl.bin' \
-    --train './hub/data/train/scala.bin' \
-    --train './hub/data/train/vue.bin' \
-    --valid './hub/data/valid/assembly.bin' \
-    --valid './hub/data/valid/cuda.bin' \
-    --valid './hub/data/valid/hcl.bin' \
-    --valid './hub/data/valid/kotlin.bin' \
-    --valid './hub/data/valid/php.bin' \
-    --valid './hub/data/valid/shell.bin' \
-    --valid './hub/data/valid/xml.bin' \
-    --valid './hub/data/valid/c-sharp.bin' \
-    --valid './hub/data/valid/dart.bin' \
-    --valid './hub/data/valid/html.bin' \
-    --valid './hub/data/valid/llvm.bin' \
-    --valid './hub/data/valid/powershell.bin' \
-    --valid './hub/data/valid/sql.bin' \
-    --valid './hub/data/valid/yaml.bin' \
-    --valid './hub/data/valid/c.bin' \
-    --valid './hub/data/valid/diff.bin' \
-    --valid './hub/data/valid/java.bin' \
-    --valid './hub/data/valid/lua.bin' \
-    --valid './hub/data/valid/python.bin' \
-    --valid './hub/data/valid/swift.bin' \
-    --valid './hub/data/valid/zig.bin' \
-    --valid './hub/data/valid/chinese-markdown.bin' \
-    --valid './hub/data/valid/dockerfile.bin' \
-    --valid './hub/data/valid/javascript.bin' \
-    --valid './hub/data/valid/makefile.bin' \
-    --valid './hub/data/valid/r.bin' \
-    --valid './hub/data/valid/tex.bin' \
-    --valid './hub/data/valid/cmake.bin' \
-    --valid './hub/data/valid/elixir.bin' \
-    --valid './hub/data/valid/json.bin' \
-    --valid './hub/data/valid/markdown.bin' \
-    --valid './hub/data/valid/ruby.bin' \
-    --valid './hub/data/valid/toml.bin' \
-    --valid './hub/data/valid/cpp.bin' \
-    --valid './hub/data/valid/go.bin' \
-    --valid './hub/data/valid/jsx.bin' \
-    --valid './hub/data/valid/pascal.bin' \
-    --valid './hub/data/valid/rust.bin' \
-    --valid './hub/data/valid/typescript.bin' \
-    --valid './hub/data/valid/css.bin' \
-    --valid './hub/data/valid/haskell.bin' \
-    --valid './hub/data/valid/julia.bin' \
-    --valid './hub/data/valid/perl.bin' \
-    --valid './hub/data/valid/scala.bin' \
-    --valid './hub/data/valid/vue.bin' \
-    --test './hub/data/test/assembly.bin' \
-    --test './hub/data/test/cuda.bin' \
-    --test './hub/data/test/hcl.bin' \
-    --test './hub/data/test/kotlin.bin' \
-    --test './hub/data/test/php.bin' \
-    --test './hub/data/test/shell.bin' \
-    --test './hub/data/test/xml.bin' \
-    --test './hub/data/test/c-sharp.bin' \
-    --test './hub/data/test/dart.bin' \
-    --test './hub/data/test/html.bin' \
-    --test './hub/data/test/llvm.bin' \
-    --test './hub/data/test/powershell.bin' \
-    --test './hub/data/test/sql.bin' \
-    --test './hub/data/test/yaml.bin' \
-    --test './hub/data/test/c.bin' \
-    --test './hub/data/test/diff.bin' \
-    --test './hub/data/test/java.bin' \
-    --test './hub/data/test/lua.bin' \
-    --test './hub/data/test/python.bin' \
-    --test './hub/data/test/swift.bin' \
-    --test './hub/data/test/zig.bin' \
-    --test './hub/data/test/chinese-markdown.bin' \
-    --test './hub/data/test/dockerfile.bin' \
-    --test './hub/data/test/javascript.bin' \
-    --test './hub/data/test/makefile.bin' \
-    --test './hub/data/test/r.bin' \
-    --test './hub/data/test/tex.bin' \
-    --test './hub/data/test/cmake.bin' \
-    --test './hub/data/test/elixir.bin' \
-    --test './hub/data/test/json.bin' \
-    --test './hub/data/test/markdown.bin' \
-    --test './hub/data/test/ruby.bin' \
-    --test './hub/data/test/toml.bin' \
-    --test './hub/data/test/cpp.bin' \
-    --test './hub/data/test/go.bin' \
-    --test './hub/data/test/jsx.bin' \
-    --test './hub/data/test/pascal.bin' \
-    --test './hub/data/test/rust.bin' \
-    --test './hub/data/test/typescript.bin' \
-    --test './hub/data/test/css.bin' \
-    --test './hub/data/test/haskell.bin' \
-    --test './hub/data/test/julia.bin' \
-    --test './hub/data/test/perl.bin' \
-    --test './hub/data/test/scala.bin' \
-    --test './hub/data/test/vue.bin'
+    --output 'tokenizer.json' \
+    --vocab-size 65536 \
+    --initial-vocab-size 1000000 \
+    --initial-vocab-insert-probability 0.01 \
+    --unigram-shrinking-factor 0.75 \
+    --unigram-num-sub-iterations 2 \
+    --max-token-length 24 \
+    --allow '(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)' \
+    --added-tokens-file ./hub/tokens/added.json \
+    $(for lang in cpp; do echo "--train ./hub/data/train/${lang}.bin --valid ./hub/data/valid/${lang}.bin --test ./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
+```
+
+The full language list is:
+
+```shell
+$(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ./hub/data/train/${lang}.bin --valid ./hub/data/valid/${lang}.bin --test ./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
 ```
 
 ### Regexes

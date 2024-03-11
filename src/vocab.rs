@@ -10,60 +10,55 @@ pub const ADVANCED_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\
 pub struct VocabularyGenerator {
     max_token_length: usize,
     insert_probability: f64,
-    allow: Vec<Regex>,
-    disallow: Vec<Regex>,
+    allow: Regex,
 }
 
 impl VocabularyGenerator {
     pub fn new(
         max_token_length: usize,
         insert_probability: f64,
-        allow: &[String],
-        disallow: &[String],
+        allow: &str,
     ) -> VocabularyGenerator {
-        let allow = allow.iter().map(|s| Regex::new(s).unwrap()).collect();
-        let disallow = disallow.iter().map(|s| Regex::new(s).unwrap()).collect();
+        let allow = Regex::new(allow).unwrap();
 
         VocabularyGenerator {
             max_token_length,
             insert_probability,
             allow,
-            disallow,
         }
     }
 
-    /// Collect frequent tokens from an array of samples.
+    /// Collect frequent tokens from a sample.
     pub fn collect_frequent_tokens<'a>(
         &self,
-        samples: impl Iterator<Item = &'a str>,
-    ) -> HashMap<String, usize> {
-        let mut frequencies = HashMap::new();
+        samples: impl IntoIterator<Item = &'a str>,
+    ) -> HashMap<&'a str, usize> {
+        let thread_local_allow = self.allow.clone();
+        let mut frequent_tokens = HashMap::new();
         let mut rng = rand::thread_rng();
 
         for sample in samples {
-            let mut sample_tokens = HashSet::new();
+            let mut sample_frequent_tokens = HashSet::new();
 
             for (i, _) in sample.char_indices() {
                 let suffix = &sample[i..];
                 for (ii, c) in suffix.char_indices().take(self.max_token_length) {
                     let candidate = &suffix[..ii + c.len_utf8()];
 
-                    if !self.disallow.iter().any(|re| re.is_match(candidate))
-                        && (self.allow.iter().any(|re| re.is_match(candidate))
-                            || self.allow.is_empty())
+                    if thread_local_allow.is_match(candidate)
                         && rng.gen_range(0.0..1.0) < self.insert_probability
                     {
-                        sample_tokens.insert(candidate);
+                        sample_frequent_tokens.insert(candidate);
                     }
                 }
             }
 
-            for token in sample_tokens {
-                *frequencies.entry(token.to_string()).or_insert(0) += 1;
+            for token in sample_frequent_tokens {
+                *frequent_tokens.entry(token).or_insert(0) += 1;
             }
         }
 
-        frequencies
+        frequent_tokens
     }
 }
 

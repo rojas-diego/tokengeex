@@ -121,7 +121,7 @@ fn vocabulary_generator(c: &mut Criterion) {
         .collect::<Vec<_>>();
     let bytes = samples.iter().map(|s| s.len()).sum::<usize>();
 
-    let generator = tokengeex::VocabularyGenerator::new(24, 0.001, ADVANCED_RE);
+    let mut generator = tokengeex::VocabularyGenerator::new(24, 0.001, ADVANCED_RE);
 
     let mut group = c.benchmark_group("vocabulary_generator");
     group.confidence_level(0.95);
@@ -129,7 +129,7 @@ fn vocabulary_generator(c: &mut Criterion) {
 
     group.bench_function("vocabulary_generator", |b| {
         b.iter(|| {
-            generator.collect_frequent_tokens(samples.iter().map(|s| s.as_str()));
+            generator.feed(samples.as_slice());
         });
     });
 

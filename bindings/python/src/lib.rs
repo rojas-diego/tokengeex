@@ -27,18 +27,6 @@ impl PyTokenizer {
         self.tokenizer.decode(&ids)
     }
 
-    /// Encode many samples in parallel.
-    #[pyo3(text_signature = "(self, many_ids)")]
-    fn encode_many(&self, many_ids: Vec<&str>) -> Vec<Vec<u32>> {
-        self.tokenizer.encode_many(&many_ids)
-    }
-
-    /// Decode many samples in parallel.
-    #[pyo3(text_signature = "(self, many_texts)")]
-    fn decode_many(&self, many_texts: Vec<Vec<u32>>) -> Vec<String> {
-        self.tokenizer.decode_many(&many_texts)
-    }
-
     fn token_to_id(&self, token: &str) -> Option<u32> {
         self.tokenizer.token_to_id(token)
     }

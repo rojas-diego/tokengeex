@@ -9,8 +9,14 @@ pub use vocab::*;
 
 use std::collections::HashMap;
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
+
+/// An arbitrary sequence of bytes. Almost always valid UTF-8 but not
+/// guaranteed.
+pub type Token = Vec<u8>;
+
+/// A token and its score.
+pub type ScoredToken = (Token, f64);
 
 /// A processor is a step of the tokenization pipeline. It can be used to
 /// transform input sequences before they are fed to the model and to transform
@@ -197,22 +203,6 @@ impl Tokenizer {
         }
 
         output
-    }
-
-    /// Encode many samples in parallel.
-    pub fn encode_many(&self, many_texts: &[&str]) -> Vec<Vec<u32>> {
-        many_texts
-            .into_par_iter()
-            .map(|text| self.encode(text))
-            .collect()
-    }
-
-    /// Decode many samples in parallel.
-    pub fn decode_many(&self, many_ids: &[Vec<u32>]) -> Vec<String> {
-        many_ids
-            .into_par_iter()
-            .map(|ids| self.decode(ids))
-            .collect()
     }
 
     pub fn token_to_id(&self, token: &str) -> Option<u32> {

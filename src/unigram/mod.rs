@@ -6,7 +6,7 @@ use crate::{
         lattice::Lattice,
         trie::{Trie, TrieBuilder},
     },
-    Model,
+    Model, ScoredToken, Token,
 };
 use std::collections::HashMap;
 
@@ -15,13 +15,6 @@ mod trainer;
 
 pub use serialization::Vocab;
 pub use trainer::*;
-
-/// An arbitrary sequence of bytes. Almost always valid UTF-8 but not
-/// guaranteed.
-pub type Token = Vec<u8>;
-
-/// A token and its score.
-pub type ScoredToken = (Token, f64);
 
 #[derive(Clone, Default)]
 /// Unigram is a tokenization model that uses a vocabulary of scored tokens to

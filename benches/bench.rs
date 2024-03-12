@@ -127,7 +127,7 @@ fn vocabulary_generator(c: &mut Criterion) {
     group.confidence_level(0.95);
     group.throughput(Throughput::Bytes(bytes as u64));
 
-    group.bench_function("vocabulary_generator", |b| {
+    group.bench_function("feed", |b| {
         b.iter(|| {
             generator.feed(samples.as_slice());
         });
@@ -136,15 +136,15 @@ fn vocabulary_generator(c: &mut Criterion) {
     group.finish();
 }
 
-fn tokenizer_unigram_encode(c: &mut Criterion) {
+fn tokenizer_unigram(c: &mut Criterion) {
     let (samples, bytes) = load_samples();
     let tokenizer = tokengeex::load("./benches/unigram.json").unwrap();
 
-    let mut group = c.benchmark_group("tokenizer_unigram_encode");
+    let mut group = c.benchmark_group("tokenizer_unigram");
     group.confidence_level(0.95).sample_size(25);
     group.throughput(Throughput::Bytes(bytes as u64));
 
-    group.bench_function("unigram_encode", |b| {
+    group.bench_function("encode", |b| {
         b.iter(|| {
             for s in &samples {
                 tokenizer.encode(s);
@@ -160,6 +160,6 @@ criterion_group!(
     processor_crlf,
     processor_unicode,
     vocabulary_generator,
-    tokenizer_unigram_encode
+    tokenizer_unigram
 );
 criterion_main!(bench);

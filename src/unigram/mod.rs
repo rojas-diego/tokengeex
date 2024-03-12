@@ -2,10 +2,7 @@
 // License: https://github.com/huggingface/tokenizers/blob/4a8105c36671ef46738d6e2799c55198139b87b2/LICENSE
 
 use crate::{
-    utils::{
-        lattice::Lattice,
-        trie::{Trie, TrieBuilder},
-    },
+    utils::{lattice::Lattice, trie::Trie},
     Model, ScoredToken, Token,
 };
 use std::collections::HashMap;
@@ -27,21 +24,19 @@ pub use trainer::*;
 pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<Token, u32>,
-    trie: Trie<(usize, usize)>,
+    trie: Trie<(u32, u32)>,
 }
 
 impl Unigram {
     /// Create a new `Unigram` model from a vocabulary of scored tokens.
     pub fn from(vocab: Vec<ScoredToken>) -> Self {
         let mut token_to_ids: HashMap<Token, u32> = HashMap::new();
-        let mut trie_builder = TrieBuilder::default();
+        let mut trie = Trie::default();
 
         for (id, (token, _)) in vocab.iter().enumerate() {
             token_to_ids.insert(token.clone(), id as u32);
-            trie_builder.push(token, (id, token.len()));
+            trie.push(token, (id as u32, token.len() as u32));
         }
-
-        let trie = trie_builder.build();
 
         Self {
             vocab,
@@ -67,9 +62,9 @@ impl Unigram {
                 .trie
                 .common_prefix_search(suffix.iter().copied(), &mut buff)
             {
-                let score = &self.vocab[id].1;
+                let score = &self.vocab[id as usize].1;
 
-                lattice.insert(pos, len, *score, id);
+                lattice.insert(pos, len as usize, *score, id as usize);
             }
         }
     }
@@ -147,6 +142,8 @@ impl Model for Unigram {
                 .trie
                 .common_prefix_search(suffix.iter().copied(), &mut buff)
             {
+                let id = id as usize;
+                let len = len as usize;
                 let node = &dp[pos + len];
                 let score = dp[pos].score + self.vocab[id].1;
 

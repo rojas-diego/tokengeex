@@ -1,7 +1,7 @@
 use std::{collections::HashSet, io::BufRead};
 use tokengeex::{
-    parallelism::MaybeParallelRefIterator, CapcodeProcessor, CrlfProcessor, Processor,
-    ProcessorWrapper, UnicodeProcessor, VocabularyGenerator,
+    parallelism::MaybeParallelRefIterator, unigram, CapcodeProcessor, CrlfProcessor, Model,
+    Processor, ProcessorWrapper, UnicodeProcessor, VocabularyGenerator,
 };
 
 mod flags {
@@ -294,7 +294,7 @@ fn train(
 
             log::info!("Using allow rule: {:?}", initial_vocab_allow);
 
-            let mut vocabulary_generator = VocabularyGenerator::new(
+            let mut vocab_generator = VocabularyGenerator::new(
                 initial_vocab_max_token_length,
                 initial_vocab_insert_probability,
                 initial_vocab_allow,
@@ -303,12 +303,44 @@ fn train(
             for (source, samples) in &train_samples {
                 log::info!("Collecting frequent tokens from {:?}.", source);
 
-                vocabulary_generator.feed(&samples);
+                vocab_generator.feed(&samples);
 
                 log::info!(
                     "Collected frequent tokens from {:?}. Total: {}",
                     source,
-                    vocabulary_generator.current_size()
+                    vocab_generator.current_size()
+                );
+            }
+
+            let (vocab, keep_indices) =
+                vocab_generator.generate(initial_vocab_size, &suggested_tokens, &added_tokens);
+
+            let vocab_total_bytes = vocab.iter().map(|(s, _)| s.len()).sum::<usize>() as u64;
+
+            log::info!(
+                "Generated initial vocabulary of size {} ({}).",
+                vocab.len(),
+                format_bytes_as_mb(vocab_total_bytes)
+            );
+
+            let mut model = unigram::Unigram::from(vocab);
+
+            log::info!("Training unigram model.");
+
+            for (source, samples) in &valid_samples {
+                log::info!("Evaluating on {:?}.", source);
+
+                let total_tokens = samples
+                    .maybe_par_iter()
+                    .map(|s| model.encode(s).len())
+                    .sum::<usize>();
+
+                let total_bytes = samples.iter().map(|s| s.len()).sum::<usize>();
+
+                log::info!(
+                    "Compression on {:?}: {:.2}",
+                    source,
+                    total_bytes as f64 / total_tokens as f64
                 );
             }
         }

@@ -81,8 +81,8 @@ impl VocabularyGenerator {
     pub fn generate(
         &mut self,
         size: usize,
-        suggested_tokens: HashSet<String>,
-        added_tokens: HashSet<String>,
+        suggested_tokens: &HashSet<String>,
+        added_tokens: &HashSet<String>,
     ) -> (Vec<ScoredToken>, HashSet<usize>) {
         let frequent_tokens = self
             .frequencies
@@ -103,37 +103,39 @@ impl VocabularyGenerator {
             .collect::<Vec<usize>>();
 
         // Convert the tokens to a vector and sort them by frequency.
-        log::info!("Sorting {} frequent tokens.", frequent_tokens.len());
         let mut frequent_tokens: Vec<_> = frequent_tokens.into_iter().collect();
         frequent_tokens.sort_by_key(|(_, freq)| Reverse(*freq));
 
         // Keep track of duplicates, ensuring the earlier occurrence is kept.
         let mut seen: HashSet<&str> = HashSet::new();
+        let mut keep_indices = HashSet::new();
 
         // Add all 256 ASCII characters and byte values to the initial
         // vocabulary. We assume the frequency of each byte is the same as
         // the highest frequency token.
         let highest_freq = frequent_tokens.first().map(|(_, freq)| *freq).unwrap_or(1);
         let mut vocab: Vec<ScoredToken> = (0..255_u8)
-            .map(|b| (vec![b], highest_freq as f64))
+            .map(|b| {
+                keep_indices.insert(b as usize);
+                (vec![b], highest_freq as f64)
+            })
             .collect();
 
         // Add the added tokens.
-        let mut added_tokens_indices = HashSet::new();
         for (i, token) in added_tokens.iter().enumerate() {
-            if !seen.contains(token.as_str()) {
+            if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token);
                 vocab.push((
                     token.as_bytes().to_vec(),
                     (added_tokens_freq[i] as f64) * (token.len() as f64),
                 ));
-                added_tokens_indices.insert(vocab.len() - 1);
+                keep_indices.insert(vocab.len() - 1);
             }
         }
 
         // Add the suggested tokens.
         for (i, token) in suggested_tokens.iter().enumerate() {
-            if !seen.contains(token.as_str()) {
+            if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token);
                 vocab.push((
                     token.as_bytes().to_vec(),
@@ -148,7 +150,7 @@ impl VocabularyGenerator {
                 break;
             }
 
-            if !seen.contains(token.as_str()) {
+            if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token.as_str());
                 vocab.push((token.as_bytes().to_vec(), (freq * token.len()) as f64));
             }
@@ -171,7 +173,7 @@ impl VocabularyGenerator {
             }
         });
 
-        (vocab, added_tokens_indices)
+        (vocab, keep_indices)
     }
 }
 

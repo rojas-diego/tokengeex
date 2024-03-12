@@ -1,9 +1,13 @@
-use std::collections::HashSet;
-
 use dashmap::DashMap;
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet},
+};
 use tokengeex::{
-    current_num_threads, CapcodeProcessor, CrlfProcessor, MaybeParallelRefIterator,
-    MaybeParallelSlice, Processor, ProcessorWrapper, UnicodeProcessor, VocabularyGenerator,
+    parallelism::{current_num_threads, MaybeParallelRefIterator, MaybeParallelSlice},
+    unigram::ScoredToken,
+    CapcodeProcessor, CrlfProcessor, Processor, ProcessorWrapper, UnicodeProcessor,
+    VocabularyGenerator,
 };
 
 mod flags {
@@ -12,17 +16,20 @@ mod flags {
             /// Train a new tokeniser from data.
             cmd train {
                 // --- General Purpose ---
-                /// Kind of model to train. Unigram is the only one supported.
+                /// Kind of model to train.
                 required -m, --model model: String
-                /// Output vocabulary filepath.
+                /// Output tokeniser filepath.
                 required -o, --output output: String
 
                 // --- Data ---
-                /// Dataset to train the tokenizer on.
+                /// List of source files to train the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
                 repeated --train input: String
-                /// Dataset to validate the tokenizer on.
+                /// List of source files to validate the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
                 repeated --valid valid: String
-                /// Dataset to test the tokenizer on.
+                /// List of source files to test the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
                 repeated --test test: String
 
                 // --- Processing ---
@@ -31,12 +38,9 @@ mod flags {
 
                 // --- Training Options ---
                 /// Desired vocabulary size.
-                required -v, --vocab-size vocab_size: usize
+                required --vocab-size vocab_size: usize
                 /// Maximum token length.
                 optional --max-token-length max_token_length: usize
-                /// Substrings that match allow Regexes will be considered for
-                /// the vocabulary.
-                optional --allow allow: String
 
                 // --- Suggested, Added and Special Tokens ---
                 /// Suggested token file.
@@ -51,6 +55,9 @@ mod flags {
                 optional --initial-vocab-size initial_vocab_size: usize
                 /// Probability of inserting a new token to the vocabulary.
                 optional --initial-vocab-insert-probability initial_vocab_insert_probability: f64
+                /// Substrings that match this Regex will be considered for
+                /// the vocabulary.
+                optional --initial-vocab-allow initial_vocab_allow: String
 
                 // --- Unigram ---
                 /// How much to shrink the vocabulary at each iteration.
@@ -74,16 +81,6 @@ mod flags {
                 /// Comma separated list of token IDs. Otherwise, stdin is used.
                 optional -i, --input input: String
             }
-
-            /// Encode or decode capcode text.
-            cmd capcode {
-                /// Input text. Otherwise, stdin is used.
-                optional -i, --input input: String
-                /// Decode boolean.
-                optional -d, --decode decode: bool
-                /// Encode boolean.
-                optional -e, --encode encode: bool
-            }
         }
     }
 }
@@ -95,7 +92,7 @@ fn encode(input: Option<&str>, vocab: &str) {
         |s| s.to_string(),
     );
 
-    let tokenizer = tokengeex::core::load(vocab).unwrap();
+    let tokenizer = tokengeex::load(vocab).unwrap();
 
     let encoded = tokenizer.encode(&input);
 
@@ -124,7 +121,7 @@ fn decode(input: Option<&str>, vocab: &str) {
         |s| s.to_string(),
     );
 
-    let tokenizer = tokengeex::core::load(vocab).unwrap();
+    let tokenizer = tokengeex::load(vocab).unwrap();
 
     let decoded = tokenizer.decode(
         &input
@@ -134,32 +131,6 @@ fn decode(input: Option<&str>, vocab: &str) {
     );
 
     println!("{}", decoded);
-}
-
-/// Encode or decode capcode text.
-fn capcode(input: Option<&str>, encode: Option<bool>, decode: Option<bool>) {
-    let input = input.map_or_else(
-        || std::io::read_to_string(&mut std::io::stdin()).unwrap(),
-        |s| s.to_string(),
-    );
-
-    let mut encode = encode.unwrap_or(false);
-    let decode = decode.unwrap_or(false);
-
-    if encode && decode {
-        panic!("Cannot encode and decode at the same time");
-    }
-    if !encode && !decode {
-        encode = true;
-    }
-
-    let processor = CapcodeProcessor;
-
-    if encode {
-        println!("{}", processor.preprocess(&input));
-    } else {
-        println!("{}", processor.postprocess(&input));
-    }
 }
 
 fn mmap_files(files: &Vec<String>) -> Vec<memmap2::Mmap> {
@@ -225,7 +196,6 @@ fn train(
     // --- Training Options ---
     vocab_size: usize,
     max_token_length: usize,
-    allow: &str,
     // --- Suggested, Added and Special Tokens ---
     suggested_tokens_files: &Vec<String>,
     added_tokens_files: &Vec<String>,
@@ -233,6 +203,7 @@ fn train(
     // --- Initial Vocabulary ---
     initial_vocab_size: usize,
     initial_vocab_insert_probability: f64,
+    initial_vocab_allow: &str,
     // --- Unigram ---
     unigram_shrinking_factor: f64,
     unigram_num_sub_iterations: usize,
@@ -295,6 +266,12 @@ fn train(
         })
         .collect();
 
+    log::info!(
+        "Loaded {} added tokens and {} suggested tokens.",
+        added_tokens.len(),
+        suggested_tokens.len()
+    );
+
     // We mmap the training, validation and test datasets to avoid loading
     // them into memory.
     let train_mmaps = mmap_files(train);
@@ -321,10 +298,13 @@ fn train(
                 initial_vocab_size, max_token_length, initial_vocab_insert_probability
             );
 
-            log::info!("Using allow rule: {:?}", allow);
+            log::info!("Using allow rule: {:?}", initial_vocab_allow);
 
-            let vocabulary_generator =
-                VocabularyGenerator::new(max_token_length, initial_vocab_insert_probability, allow);
+            let vocabulary_generator = VocabularyGenerator::new(
+                max_token_length,
+                initial_vocab_insert_probability,
+                initial_vocab_allow,
+            );
 
             let frequent_tokens: DashMap<String, usize> = DashMap::new();
 
@@ -371,14 +351,86 @@ fn train(
                 );
             }
 
-            log::info!("Sorting frequent tokens...");
+            let frequent_tokens = frequent_tokens
+                .into_iter()
+                .collect::<HashMap<String, usize>>();
 
-            let mut frequent_tokens = frequent_tokens.into_iter().collect::<Vec<_>>();
-            frequent_tokens.sort_by(|a, b| b.1.cmp(&a.1));
+            // Collect the frequency of the suggested tokens.
+            // TODO: Instead of relying on a default frequency of 1, we should
+            // consider the frequency of the suggested tokens in the dataset. This
+            // involves making a second pass over the dataset.
+            let suggested_tokens_freq = suggested_tokens
+                .iter()
+                .map(|token| frequent_tokens.get(token.as_str()).copied().unwrap_or(1))
+                .collect::<Vec<usize>>();
+
+            // Convert the tokens to a vector and sort them by frequency.
+            log::info!("Sorting {} frequent tokens.", frequent_tokens.len());
+            let mut frequent_tokens: Vec<_> = frequent_tokens.into_iter().collect();
+            frequent_tokens.sort_by_key(|(_, freq)| Reverse(*freq));
+
+            // Keep track of duplicates, ensuring the earlier occurrence is kept.
+            let mut seen: HashSet<&str> = HashSet::new();
+
+            // Add all 256 ASCII characters and byte values to the initial
+            // vocabulary. We assume the frequency of each byte is the same as
+            // the highest frequency token.
+            let highest_freq = frequent_tokens.first().map(|(_, freq)| *freq).unwrap_or(1);
+            let mut vocab: Vec<ScoredToken> = (0..255_u8)
+                .map(|b| (vec![b], highest_freq as f64))
+                .collect();
+
+            // Add the suggested tokens.
+            for (i, token) in suggested_tokens.iter().enumerate() {
+                if !seen.contains(token.as_str()) {
+                    seen.insert(token);
+                    vocab.push((
+                        token.as_bytes().to_vec(),
+                        (suggested_tokens_freq[i] as f64) * (token.len() as f64),
+                    ));
+                }
+            }
+
+            // We further add the most frequent substrings.
+            for (token, freq) in &frequent_tokens {
+                if vocab.len() >= vocab_size {
+                    break;
+                }
+
+                if !seen.contains(token.as_str()) {
+                    seen.insert(token.as_str());
+                    vocab.push((token.as_bytes().to_vec(), (freq * token.len()) as f64));
+                }
+            }
+
+            // Sort the vocabulary by score.
+            vocab.sort_by(|(_, a), (_, b)| {
+                a.partial_cmp(b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .reverse()
+            });
+
+            // Convert the scores to log probabilities.
+            logprobs(&mut vocab);
+
+            // Computing log probabilities generates NaNs for items where freq=0.
+            vocab.iter_mut().for_each(|(_, score)| {
+                if !score.is_normal() {
+                    *score = 0.0;
+                }
+            });
         }
         _ => {
             panic!("Model {:?} is not supported.", model);
         }
+    }
+}
+
+fn logprobs(pieces: &mut [ScoredToken]) {
+    let sum: f64 = pieces.iter().map(|(_, score)| score).sum();
+    let logsum = sum.ln();
+    for (_, score) in pieces.iter_mut() {
+        *score = score.ln() - logsum;
     }
 }
 
@@ -400,7 +452,6 @@ fn main() {
                 // --- Training Options ---
                 flags.vocab_size,
                 flags.max_token_length.unwrap_or(24),
-                &flags.allow.unwrap_or("^*$".into()),
                 // --- Suggested, Added and Special Tokens ---
                 &flags.suggested_tokens_file,
                 &flags.added_tokens_file,
@@ -408,6 +459,7 @@ fn main() {
                 // --- Initial Vocab ---
                 flags.initial_vocab_size.unwrap_or(100000),
                 flags.initial_vocab_insert_probability.unwrap_or(0.01),
+                &flags.initial_vocab_allow.unwrap_or("^*$".into()),
                 // --- Unigram ---
                 flags.unigram_shrinking_factor.unwrap_or(0.75),
                 flags.unigram_num_sub_iterations.unwrap_or(2),
@@ -418,9 +470,6 @@ fn main() {
         }
         flags::TokengeexCmd::Decode(flags) => {
             decode(flags.input.as_deref(), &flags.vocab);
-        }
-        flags::TokengeexCmd::Capcode(flags) => {
-            capcode(flags.input.as_deref(), flags.encode, flags.decode);
         }
     }
 }

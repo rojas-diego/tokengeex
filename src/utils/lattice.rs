@@ -1,8 +1,6 @@
 // Code imported and modified from: https://github.com/huggingface/tokenizers
 // License: https://github.com/huggingface/tokenizers/blob/4a8105c36671ef46738d6e2799c55198139b87b2/LICENSE
 
-use rand::distributions::WeightedIndex;
-use rand::prelude::*;
 use std::cell::RefCell;
 use std::cmp::{min, Ordering};
 use std::collections::BinaryHeap;
@@ -238,20 +236,11 @@ impl<'a> Lattice<'a> {
         String::from_utf8_lossy(&self.sentence[node.pos..node.pos + node.length]).to_string()
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn tokens(&mut self) -> Vec<String> {
-        self.viterbi()
-            .iter()
-            .map(|node| self.piece(&node.borrow()))
-            .collect()
-    }
-
     pub(crate) fn nbest(&mut self, n: usize) -> Vec<Vec<NodeRef>> {
         match n {
             0 => vec![],
             1 => vec![self.viterbi()],
             _ => {
-                // let k_reserved_hypothesis_size = 512;
                 let mut agenda: Agenda = BinaryHeap::new();
                 let mut hypotheses: Vec<Vec<NodeRef>> = vec![];
                 let eos = self.eos_node();
@@ -307,21 +296,8 @@ impl<'a> Lattice<'a> {
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn nbest_tokens(&mut self, n: usize) -> Vec<Vec<String>> {
-        self.nbest(n)
-            .iter()
-            .map(|v| v.iter().map(|node| self.piece(&node.borrow())).collect())
-            .collect()
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.len
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.len == 0
     }
 
     pub(crate) fn bos_node(&self) -> NodeRef {
@@ -330,11 +306,6 @@ impl<'a> Lattice<'a> {
 
     pub(crate) fn eos_node(&self) -> NodeRef {
         Rc::clone(&self.begin_nodes[self.len][0])
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn sentence(&self) -> &[u8] {
-        self.sentence
     }
 
     /// Computes the marginal probability for each node (token) which is the
@@ -414,59 +385,5 @@ impl<'a> Lattice<'a> {
         }
 
         z
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn sample(&self, theta: f64) -> Vec<NodeRef> {
-        let len = self.len();
-        if len == 0 {
-            return vec![];
-        }
-        let mut alpha = vec![0.0; self.nodes.len()];
-        for pos in 0..=len {
-            for rnode in &self.begin_nodes[pos] {
-                for lnode in &self.end_nodes[pos] {
-                    let lid = lnode.borrow().node_id;
-                    let rid = rnode.borrow().node_id;
-                    alpha[rid] = log_sum_exp(
-                        alpha[rid],
-                        theta * (lnode.borrow().score + alpha[lid]),
-                        *lnode == self.end_nodes[pos][0],
-                    );
-                }
-            }
-        }
-
-        let mut rng = thread_rng();
-        let mut results: Vec<NodeRef> = vec![];
-        let mut probs: Vec<f64> = vec![];
-        let mut z = alpha[self.eos_node().borrow().node_id];
-        let mut node = self.eos_node();
-        loop {
-            probs.clear();
-            let pos = node.borrow().pos;
-            for lnode in &self.end_nodes[pos] {
-                let lid = lnode.borrow().node_id;
-                probs.push((alpha[lid] + theta * lnode.borrow().score - z).exp())
-            }
-            let dist = WeightedIndex::new(&probs).unwrap();
-            let index = dist.sample(&mut rng);
-            node = Rc::clone(&self.end_nodes[pos][index]);
-            if node == self.bos_node() {
-                break;
-            }
-            z = alpha[node.borrow().node_id];
-            results.push(Rc::clone(&node));
-        }
-        results.reverse();
-        results
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn sample_token(&self, theta: f64) -> Vec<String> {
-        self.sample(theta)
-            .iter()
-            .map(|node| self.piece(&node.borrow()))
-            .collect()
     }
 }

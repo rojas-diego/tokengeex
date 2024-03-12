@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use tokengeex::{Processor, ADVANCED_RE};
+use tokengeex::{vocab::ADVANCED_RE, Processor};
 
 fn load_samples() -> (Vec<String>, usize) {
     let data = std::fs::read("./data/train.bin").unwrap();

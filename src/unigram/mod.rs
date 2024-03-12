@@ -2,11 +2,11 @@
 // License: https://github.com/huggingface/tokenizers/blob/4a8105c36671ef46738d6e2799c55198139b87b2/LICENSE
 
 use crate::{
-    core::Model,
     utils::{
         lattice::Lattice,
         trie::{Trie, TrieBuilder},
     },
+    Model,
 };
 use std::collections::HashMap;
 
@@ -20,7 +20,7 @@ pub use trainer::*;
 /// guaranteed.
 pub type Token = Vec<u8>;
 
-/// The byte fallbacks for the first 256 ASCII characters.
+/// A token and its score.
 pub type ScoredToken = (Token, f64);
 
 #[derive(Clone, Default)]

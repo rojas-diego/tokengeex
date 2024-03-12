@@ -34,35 +34,10 @@ impl UnigramTrainer {
         }
     }
 
-    #[allow(unused)]
-    pub fn feed(&mut self, sentence: &str) {
-        let mut start = 0;
-
-        while start < sentence.len() {
-            // Determine the end of the current chunk without splitting a character
-            let end = if start + 32 > sentence.len() {
-                sentence.len()
-            } else {
-                // Find the end that does not split a character
-                let mut end = start + 32;
-                while !sentence.is_char_boundary(end) {
-                    end += 1;
-                }
-                end
-            };
-
-            // Push the current chunk
-            self.sentences.push(sentence[start..end].to_string());
-
-            // Update the start for the next chunk
-            start = end;
-        }
-    }
-
     /// Train a Unigram model over a dataset of sentences using the initial
     /// specified initial vocabulary.
     #[allow(unused)]
-    pub fn train(&self, model: &mut Unigram, vocab: Vec<ScoredToken>) -> Result<()> {
+    pub fn train(&self, vocab: Vec<ScoredToken>) -> Result<Unigram> {
         let desired_vocab_size: usize = (self.vocab_size * 11) / 10;
         let expected_loops = (((desired_vocab_size as f64).ln() - (vocab.len() as f64).ln())
             / self.shrinking_factor.ln()) as usize
@@ -75,7 +50,7 @@ impl UnigramTrainer {
             expected_loops
         );
 
-        *model = Unigram::from(vocab);
+        let mut model = Unigram::from(vocab);
 
         for i in 0..usize::MAX {
             for ii in 0..self.num_sub_iterations {
@@ -84,7 +59,7 @@ impl UnigramTrainer {
                 // much we expect to see each token in the dataset given our
                 // current model.
                 let (objective, num_tokens, num_bytes, expected_frequencies) =
-                    self.run_e_step(model);
+                    self.run_e_step(&model);
 
                 log::info!("Running M-step iter={} subiter={}", i, ii);
                 // Using this expectation, we compute an alternative vocabulary
@@ -101,23 +76,21 @@ impl UnigramTrainer {
                     (num_bytes as f64) / (num_tokens as f64)
                 );
 
-                *model = Unigram::from(vocab);
+                model = Unigram::from(vocab);
             }
 
-            // Stops the iteration when the size of sentences reaches to the
-            // desired symbol size.
             if model.vocab_size() <= desired_vocab_size {
                 break;
             }
 
             // Prunes pieces.
-            *model = Unigram::from(self.prune_vocab(model, model.vocab()));
+            model = Unigram::from(self.prune_vocab(&model, model.vocab()));
         }
 
         // Finally, adjusts the size of sentencepices to be |vocab_size|.
-        *model = self.finalize(model);
+        model = self.finalize(&model);
 
-        Ok(())
+        Ok(model)
     }
 
     /// Runs the E-step of the EM algorithm for the Unigram model. It computes
@@ -426,13 +399,4 @@ fn digamma(mut x: f64) -> f64 {
     result += x.ln() + (1.0 / 24.0) * xx2 - 7.0 / 960.0 * xx4 + (31.0 / 8064.0) * xx4 * xx2
         - (127.0 / 30720.0) * xx4 * xx4;
     result
-}
-
-#[allow(unused)]
-fn to_log_prob(pieces: &mut [ScoredToken]) {
-    let sum: f64 = pieces.iter().map(|(_, score)| score).sum();
-    let logsum = sum.ln();
-    for (_, score) in pieces.iter_mut() {
-        *score = score.ln() - logsum;
-    }
 }

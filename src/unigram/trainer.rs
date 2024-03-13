@@ -7,7 +7,6 @@ use crate::{
     },
     Model,
 };
-use std::collections::HashSet;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, UnigramTrainerError>;
@@ -15,19 +14,15 @@ pub type Result<T> = std::result::Result<T, UnigramTrainerError>;
 #[derive(Debug, Error)]
 pub enum UnigramTrainerError {}
 
-#[allow(unused)]
-struct UnigramTrainer {
-    sentences: Vec<String>,
+pub struct UnigramTrainer {
     vocab_size: usize,
     num_sub_iterations: usize,
     shrinking_factor: f64,
 }
 
 impl UnigramTrainer {
-    #[allow(unused)]
     pub fn new(vocab_size: usize, num_sub_iterations: usize, shrinking_factor: f64) -> Self {
         Self {
-            sentences: Vec::new(),
             vocab_size,
             num_sub_iterations,
             shrinking_factor,
@@ -36,132 +31,89 @@ impl UnigramTrainer {
 
     /// Train a Unigram model over a dataset of sentences using the initial
     /// specified initial vocabulary.
-    #[allow(unused)]
-    pub fn train(&self, vocab: Vec<ScoredToken>) -> Result<Unigram> {
+    pub fn train(&mut self, model: &mut Unigram, samples: &[&str]) -> bool {
         let desired_vocab_size: usize = (self.vocab_size * 11) / 10;
-        let expected_loops = (((desired_vocab_size as f64).ln() - (vocab.len() as f64).ln())
-            / self.shrinking_factor.ln()) as usize
-            + 1;
 
-        log::info!(
-            "Training on {} sentences using an initial vocab of {} tokens. Running {} EM loop(s) to fine grain the vocabulary",
-            self.sentences.len(),
-            vocab.len(),
-            expected_loops
-        );
+        for i in 0..self.num_sub_iterations {
+            // Compute the expected frequencies of each token. That is, how
+            // much we expect to see each token in the dataset given our
+            // current model.
+            let expected_frequencies = self.run_e_step(model, samples);
+            log::info!(
+                "E-step completed subiter={} vocab_size={}",
+                i,
+                model.vocab_size()
+            );
 
-        let mut model = Unigram::from(vocab);
+            // Using this expectation, we compute an alternative vocabulary
+            // that maximizes the likelihood of the dataset.
+            let vocab = self.run_m_step(model.vocab(), &expected_frequencies);
+            log::info!(
+                "M-step completed subiter={} vocab_size={} alternative_vocab_size={}",
+                i,
+                model.vocab_size(),
+                vocab.len()
+            );
 
-        for i in 0..usize::MAX {
-            for ii in 0..self.num_sub_iterations {
-                log::info!("Running E-step iter={} subiter={}", i, ii);
-                // Compute the expected frequencies of each token. That is, how
-                // much we expect to see each token in the dataset given our
-                // current model.
-                let (objective, num_tokens, num_bytes, expected_frequencies) =
-                    self.run_e_step(&model);
-
-                log::info!("Running M-step iter={} subiter={}", i, ii);
-                // Using this expectation, we compute an alternative vocabulary
-                // that maximizes the likelihood of the dataset.
-                let vocab = self.run_m_step(model.vocab(), &expected_frequencies);
-
-                log::info!(
-                    "Completed EM iter={} subiter={} vocab_size={} objective={} num_tokens={} compression={}",
-                    i,
-                    ii,
-                    model.vocab_size(),
-                    objective,
-                    num_tokens,
-                    (num_bytes as f64) / (num_tokens as f64)
-                );
-
-                model = Unigram::from(vocab);
-            }
-
-            if model.vocab_size() <= desired_vocab_size {
-                break;
-            }
-
-            // Prunes pieces.
-            model = Unigram::from(self.prune_vocab(&model, model.vocab()));
+            *model = Unigram::from(vocab);
         }
 
-        // Finally, adjusts the size of sentencepices to be |vocab_size|.
-        model = self.finalize(&model);
+        if model.vocab_size() <= desired_vocab_size {
+            // Finally, adjusts the size of sentencepices to be |vocab_size|.
+            *model = self.finalize(model);
 
-        Ok(model)
+            return false;
+        }
+
+        // Prunes pieces.
+        *model = Unigram::from(self.prune_vocab(model, model.vocab(), samples));
+
+        true
     }
 
     /// Runs the E-step of the EM algorithm for the Unigram model. It computes
     /// the expected frequencies of each token in the vocabulary. The expected
     /// frequency for each token is calculated by considering all possible
-    /// segmentations of each sentence into tokens, weighted by the probability
+    /// segmentations of each sample into tokens, weighted by the probability
     /// of each segmentation.
-    fn run_e_step(&self, model: &Unigram) -> (f64, u32, u32, Vec<f64>) {
-        let chunk_size = std::cmp::max(self.sentences.len() / current_num_threads(), 1);
-        let (loss, num_tokens, num_bytes, expected_frequencies): (f64, u32, u32, Vec<f64>) = self.sentences
+    fn run_e_step(&self, model: &Unigram, samples: &[&str]) -> Vec<f64> {
+        let chunk_size = std::cmp::max(samples.len() / current_num_threads(), 1);
+        let expected_frequencies: Vec<f64> = samples
             .maybe_par_chunks(chunk_size)
             .map(|chunk| {
-                // A measure of how well the model fits the data.
-                let mut loss: f64 = 0.0;
                 // How much we expect to see each token in the vocabulary
-                // in this chunk of sentences. This frequency is computed based
+                // in this chunk of samples. This frequency is computed based
                 // on the probability of the token being part of optimal splits
                 // (its marginal probability).
                 let mut expected_frequencies: Vec<f64> = vec![0.0; model.vocab_size()];
-                let mut num_tokens: u32 = 0;
-                let mut num_bytes: u32 = 0;
 
-                for sentence in chunk {
-                    // Compute all the possible segmentations of the sentence.
-                    let mut lattice =
-                        Lattice::from(sentence.as_bytes(), model.vocab.len() + 1, model.vocab.len() + 2);
+                for &sample in chunk {
+                    // Compute all the possible segmentations of the sample.
+                    let mut lattice = Lattice::from(
+                        sample.as_bytes(),
+                        model.vocab.len() + 1,
+                        model.vocab.len() + 2,
+                    );
                     model.populate_nodes(&mut lattice);
 
                     let z = lattice.populate_marginal(&mut expected_frequencies);
                     if !z.is_normal() {
-                        // Collect all the tokens that were in the lattice
-                        let tokens = lattice
-                            .begin_nodes
-                            .iter()
-                            .take(lattice.begin_nodes.len() - 1)
-                            .flat_map(|node| node.iter().map(|n| n.borrow().id))
-                            .collect::<HashSet<usize>>()
-                            .iter()
-                            .map(|id| (*id, model.vocab[*id].clone()))
-                            .collect::<Vec<_>>();
-
-                        // We log before panicking because it seems the parallelism
-                        // is causing all threads to panic at the same time.
-                        log::info!("normalization constant for sentence {:?} is f64::NaN lattice={} tokens={:?}", sentence, lattice, tokens);
-
-                        panic!("normalization constant is f64::NaN");
+                        panic!(
+                            "normalization constant is f64::NaN (z={}, len={})",
+                            z,
+                            sample.len()
+                        );
                     }
-
-                    num_tokens += lattice.viterbi().len() as u32;
-                    num_bytes += sentence.len() as u32;
-                    loss -= z / (self.sentences.len() as f64);
                 }
-                (loss, num_tokens, num_bytes, expected_frequencies)
+
+                expected_frequencies
             })
             .reduce(
-                || (0.0, 0, 0, vec![0.0; model.vocab_size()]),
-                |(loss, ntokens, nbytes, expected), (lloss, lntokens, lnbytes, lexpected)| {
-                    (
-                        loss + lloss,
-                        ntokens + lntokens,
-                        nbytes + lnbytes,
-                        expected
-                            .iter()
-                            .zip(lexpected)
-                            .map(|(global_el, local_el)| global_el + local_el)
-                            .collect(),
-                    )
-                },
+                || vec![0.0; model.vocab_size()],
+                |l, r| l.iter().zip(r).map(|(a, b)| a + b).collect(),
             );
 
-        (loss, num_tokens, num_bytes, expected_frequencies)
+        expected_frequencies
     }
 
     /// Runs the M-step of the EM algorithm for the Unigram model. It computes
@@ -174,11 +126,11 @@ impl UnigramTrainer {
         let mut alternative_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
 
         for (freq, (token, _)) in expected_frequencies.iter().zip(vocab) {
-            if *freq < EXPECTED_FREQUENCY_THRESHOLD {
+            if *freq < EXPECTED_FREQUENCY_THRESHOLD && token.len() > 1 {
                 continue;
             }
 
-            alternative_vocab.push((token.clone(), *freq));
+            alternative_vocab.push((token.clone(), f64::max(*freq, 0.5)));
         }
 
         // I have no clue what's going here. A previous comment pointed to this
@@ -193,7 +145,7 @@ impl UnigramTrainer {
 
         // Ensure the vocabulary does not contain f64::NaN.
         for (i, freq) in scores.iter().enumerate() {
-            if !freq.is_normal() {
+            if freq.is_nan() || freq.is_infinite() {
                 let token = alternative_vocab[i].0.clone();
                 let freq = alternative_vocab[i].1;
 
@@ -223,13 +175,18 @@ impl UnigramTrainer {
 
     /// This method returns a new vocabulary with the least useful tokens
     /// removed.
-    fn prune_vocab(&self, model: &Unigram, vocab: &[ScoredToken]) -> Vec<ScoredToken> {
+    fn prune_vocab(
+        &self,
+        model: &Unigram,
+        vocab: &[ScoredToken],
+        samples: &[&str],
+    ) -> Vec<ScoredToken> {
         let bos_id = vocab.len() + 1;
         let eos_id = vocab.len() + 2;
 
         // Segment each token in the vocabulary to understand how it would be
         // resegmented if it was removed from the vocabulary.
-        let mut always_keep = vec![true; vocab.len()];
+        let mut keep = vec![true; vocab.len()];
         let mut alternatives: Vec<Vec<usize>> = vec![Vec::new(); vocab.len()];
         for (id, (token, _)) in vocab.iter().enumerate() {
             let mut lattice = Lattice::from(token, bos_id, eos_id);
@@ -239,13 +196,15 @@ impl UnigramTrainer {
             // first path will always be the token itself.
             let nbests = lattice.nbest(2);
 
-            // TODO: Check the correctness of this logic.
             if nbests.len() == 1 {
-                always_keep[id] = true;
-            } else if nbests[0].len() >= 2 {
-                always_keep[id] = false;
+                // There is no other way to segment this token. Keep it.
+                keep[id] = true;
+            } else if nbests[0].len() > 1 {
+                // Does that mean that the token's score is so low that Unigram
+                // considers segmenting itself using two other tokens?
+                keep[id] = false;
             } else if nbests[0].len() == 1 {
-                always_keep[id] = true;
+                keep[id] = true;
                 for node in &nbests[1] {
                     let alt_id = node.borrow().id;
                     alternatives[id].push(alt_id);
@@ -253,19 +212,14 @@ impl UnigramTrainer {
             }
         }
 
-        let sentences_with_id: Vec<(usize, &str)> = self
-            .sentences
-            .iter()
-            .map(|s| s.as_str())
-            .enumerate()
-            .collect();
+        let samples_with_id: Vec<(usize, &str)> = samples.iter().copied().enumerate().collect();
 
         // For a token ID i, inverted[i] stores the list of sentence IDs that
         // contain the token i.
         // This step computes the global frequency of each token and the list of
-        // sentences that contain each token.
-        let chunk_size = std::cmp::max(self.sentences.len() / current_num_threads(), 1);
-        let (token_frequencies, inverted): (Vec<f64>, Vec<Vec<usize>>) = sentences_with_id
+        // samples that contain each token.
+        let chunk_size = std::cmp::max(samples.len() / current_num_threads(), 1);
+        let (token_frequencies, inverted): (Vec<f64>, Vec<Vec<usize>>) = samples_with_id
             .maybe_par_chunks(chunk_size)
             .map(|chunk| {
                 let mut freq: Vec<f64> = vec![0.0; vocab.len()];
@@ -312,7 +266,7 @@ impl UnigramTrainer {
         // approximately by assuming that all tokens `i` would be replaced with
         // alternatives[i] if removed.
         for (id, (token, score)) in vocab.iter().enumerate() {
-            if token_frequencies[id] == 0.0 && !always_keep[id] {
+            if token_frequencies[id] == 0.0 && !keep[id] {
                 // Not found in Viterbi path. Can remove this entry safely.
                 continue;
             } else if alternatives[id].is_empty() {
@@ -322,11 +276,11 @@ impl UnigramTrainer {
                 // The number of sentences in which the token `i` appears.
                 let mut f: f64 = inverted[id].len() as f64;
 
-                if f == 0.0 || !f.is_normal() {
+                if !f.is_normal() {
                     continue;
                 }
 
-                f /= self.sentences.len() as f64; // normalizes by all sentence frequency.
+                f /= samples.len() as f64; // normalizes by all samples frequency.
 
                 let logprob = token_frequencies[id].ln() - logsum_token_frequencies;
 
@@ -372,7 +326,7 @@ impl UnigramTrainer {
     fn finalize(&self, model: &Unigram) -> Unigram {
         let mut vocab: Vec<ScoredToken> = vec![];
 
-        for (token, score) in model.iter() {
+        for (token, score) in model.vocab() {
             vocab.push((token.clone(), if !score.is_normal() { 0.0 } else { *score }));
 
             if vocab.len() >= self.vocab_size {

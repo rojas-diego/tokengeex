@@ -1,7 +1,7 @@
 use std::{collections::HashSet, io::BufRead};
 use tokengeex::{
     parallelism::MaybeParallelRefIterator, unigram, CapcodeProcessor, CrlfProcessor, Model,
-    Processor, ProcessorWrapper, UnicodeProcessor, VocabularyGenerator,
+    Processor, ProcessorWrapper, Tokenizer, UnicodeProcessor, VocabularyGenerator,
 };
 
 mod flags {
@@ -125,42 +125,6 @@ fn decode(input: Option<&str>, vocab: &str) {
     println!("{}", decoded);
 }
 
-fn load_samples<F>(path: &str, process: F) -> Vec<String>
-where
-    F: Fn(&str) -> String,
-{
-    let file =
-        std::fs::File::open(path).unwrap_or_else(|e| panic!("failed to open {:?}: {:?}", path, e));
-    let mut reader = std::io::BufReader::new(file);
-    let mut buffer = Vec::new();
-    let mut samples = Vec::new();
-
-    loop {
-        match reader.read_until(0x00, &mut buffer) {
-            Ok(0) => {
-                break;
-            }
-            Ok(_) => {
-                let line = String::from_utf8(buffer.clone()).unwrap();
-                samples.push(process(line.trim_end_matches('\0')));
-                buffer.clear();
-            }
-            Err(e) => panic!("failed to read from {:?}: {:?}", path, e),
-        }
-    }
-
-    let samples_total_bytes = samples.iter().map(|s| s.len()).sum::<usize>() as u64;
-
-    log::info!(
-        "Loaded {} samples from {:?} ({}).",
-        samples.len(),
-        path,
-        format_bytes_as_mb(samples_total_bytes)
-    );
-
-    samples
-}
-
 fn load_processors(processors: &[String]) -> Vec<ProcessorWrapper> {
     processors
         .iter()
@@ -202,6 +166,42 @@ fn load_tokens_files(files: &[String], mode: &str) -> HashSet<String> {
             tokens
         })
         .collect()
+}
+
+fn load_samples<F>(path: &str, process: F) -> Vec<String>
+where
+    F: Fn(&str) -> String,
+{
+    let file =
+        std::fs::File::open(path).unwrap_or_else(|e| panic!("failed to open {:?}: {:?}", path, e));
+    let mut reader = std::io::BufReader::new(file);
+    let mut buffer = Vec::new();
+    let mut samples = Vec::new();
+
+    loop {
+        match reader.read_until(0x00, &mut buffer) {
+            Ok(0) => {
+                break;
+            }
+            Ok(_) => {
+                let line = String::from_utf8(buffer.clone()).unwrap();
+                samples.push(process(line.trim_end_matches('\0')));
+                buffer.clear();
+            }
+            Err(e) => panic!("failed to read from {:?}: {:?}", path, e),
+        }
+    }
+
+    let samples_total_bytes = samples.iter().map(|s| s.len()).sum::<usize>() as u64;
+
+    log::info!(
+        "Loaded {} samples from {:?} ({}).",
+        samples.len(),
+        path,
+        format_bytes_as_mb(samples_total_bytes)
+    );
+
+    samples
 }
 
 fn load_split(sources: &[String], processor: &[ProcessorWrapper]) -> Vec<(String, Vec<String>)> {
@@ -249,7 +249,7 @@ fn train(
     // --- Suggested, Added and Special Tokens ---
     suggested_tokens_files: &Vec<String>,
     added_tokens_files: &Vec<String>,
-    special_tokens: &Vec<String>,
+    _special_tokens: &Vec<String>,
     // --- Initial Vocabulary ---
     initial_vocab_size: usize,
     initial_vocab_max_token_length: usize,
@@ -312,7 +312,7 @@ fn train(
                 );
             }
 
-            let (vocab, keep_indices) =
+            let (vocab, _) =
                 vocab_generator.generate(initial_vocab_size, &suggested_tokens, &added_tokens);
 
             let vocab_total_bytes = vocab.iter().map(|(s, _)| s.len()).sum::<usize>() as u64;
@@ -323,11 +323,51 @@ fn train(
                 format_bytes_as_mb(vocab_total_bytes)
             );
 
+            log::info!("Training unigram model.");
             let mut model = unigram::Unigram::from(vocab);
 
-            log::info!("Training unigram model.");
+            let mut trainer = unigram::UnigramTrainer::new(
+                vocab_size,
+                unigram_num_sub_iterations,
+                unigram_shrinking_factor,
+            );
 
-            for (source, samples) in &valid_samples {
+            let all_train_samples = train_samples
+                .iter()
+                .flat_map(|(_, samples)| samples.iter())
+                .map(|s| s.as_str())
+                .collect::<Vec<&str>>();
+
+            let mut epoch = 0;
+            let mut should_continue = true;
+
+            while should_continue {
+                log::info!("Epoch {} | Vocabulary size: {}", epoch, model.vocab_size());
+
+                should_continue = trainer.train(&mut model, &all_train_samples);
+
+                for (source, samples) in &valid_samples {
+                    log::info!("Evaluating on {:?}.", source);
+
+                    let total_tokens = samples
+                        .maybe_par_iter()
+                        .map(|s| model.encode(s).len())
+                        .sum::<usize>();
+
+                    let total_bytes = samples.iter().map(|s| s.len()).sum::<usize>();
+
+                    log::info!(
+                        "Compression on {:?}: {:.2}",
+                        source,
+                        total_bytes as f64 / total_tokens as f64
+                    );
+                }
+
+                epoch += 1;
+            }
+
+            // Test set evaluation
+            for (source, samples) in &test_samples {
                 log::info!("Evaluating on {:?}.", source);
 
                 let total_tokens = samples
@@ -343,6 +383,12 @@ fn train(
                     total_bytes as f64 / total_tokens as f64
                 );
             }
+
+            log::info!("Training finished. Writing to {:?}.", output);
+
+            let tokenizer = Tokenizer::new(tokengeex::ModelWrapper::Unigram(model), processors);
+
+            tokenizer.save(output).unwrap();
         }
         _ => {
             panic!("Model {:?} is not supported.", model);

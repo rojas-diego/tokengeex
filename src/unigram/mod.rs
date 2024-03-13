@@ -47,9 +47,6 @@ impl Unigram {
 
     /// Populates a lattice with all the possible tokenizations of the input
     /// sentence.
-    // TODO: At the moment, if there's no way to tokenize the sentence, we
-    // panic. We should use an UNK token instead.
-    #[allow(unused)]
     pub(super) fn populate_nodes(&self, lattice: &mut Lattice) {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = lattice.sentence;
@@ -69,36 +66,9 @@ impl Unigram {
         }
     }
 
-    /// Iterate of vocabulary of the model as a pair of `(token, score)`.
-    #[allow(unused)]
-    pub(super) fn iter(&self) -> UnigramIterator {
-        UnigramIterator { model: self, i: 0 }
-    }
-
     /// Access the vocabulary of the model.
     pub fn vocab(&self) -> &Vec<ScoredToken> {
         &self.vocab
-    }
-}
-
-/// Iterator to iterate of vocabulary of the model, and their relative score.
-pub struct UnigramIterator<'a> {
-    model: &'a Unigram,
-    i: usize,
-}
-
-impl<'a> Iterator for UnigramIterator<'a> {
-    type Item = &'a ScoredToken;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let i = self.i;
-        if i < self.model.vocab_size() {
-            let r = Some(&self.model.vocab[i]);
-            self.i += 1;
-            r
-        } else {
-            None
-        }
     }
 }
 

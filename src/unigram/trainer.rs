@@ -212,50 +212,31 @@ impl UnigramTrainer {
             }
         }
 
-        let samples_with_id: Vec<(usize, &str)> = samples.iter().copied().enumerate().collect();
-
         // For a token ID i, inverted[i] stores the list of sentence IDs that
         // contain the token i.
         // This step computes the global frequency of each token and the list of
         // samples that contain each token.
         let chunk_size = std::cmp::max(samples.len() / current_num_threads(), 1);
-        let (token_frequencies, inverted): (Vec<f64>, Vec<Vec<usize>>) = samples_with_id
+        let token_frequencies: Vec<usize> = samples
             .maybe_par_chunks(chunk_size)
             .map(|chunk| {
-                let mut freq: Vec<f64> = vec![0.0; vocab.len()];
-                let mut inverted: Vec<Vec<usize>> = vec![Vec::new(); vocab.len()];
+                let mut freq: Vec<usize> = vec![0; vocab.len()];
 
-                for (i, sentence) in chunk {
-                    let mut lattice = Lattice::from(sentence.as_bytes(), bos_id, eos_id);
-                    model.populate_nodes(&mut lattice);
-
-                    for node in lattice.viterbi() {
-                        let id = node.borrow().id;
-                        freq[id] += 1.0;
-                        inverted[id].push(*i);
+                for sentence in chunk {
+                    for id in model.encode(sentence) {
+                        freq[id as usize] += 1;
                     }
                 }
-                (freq, inverted)
+
+                freq
             })
             .reduce(
-                || (vec![0.0; vocab.len()], vec![Vec::new(); vocab.len()]),
-                |(freq, inverted), (lfreq, linverted)| {
-                    (
-                        freq.iter()
-                            .zip(lfreq)
-                            .map(|(global_el, local_el)| global_el + local_el)
-                            .collect(),
-                        inverted
-                            .iter()
-                            .zip(linverted)
-                            .map(|(global_el, local_el)| [&global_el[..], &local_el[..]].concat())
-                            .collect(),
-                    )
-                },
+                || vec![0; vocab.len()],
+                |l, r| l.iter().zip(r).map(|(a, b)| a + b).collect(),
             );
 
-        let sum_token_frequencies: f64 = token_frequencies.iter().sum();
-        let logsum_token_frequencies = sum_token_frequencies.ln();
+        let sum_token_frequencies = token_frequencies.iter().sum::<usize>() as f64;
+        let logsum_token_frequencies = (sum_token_frequencies as f64).ln();
 
         let mut candidates: Vec<(usize, f64)> = vec![];
         let mut pruned_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
@@ -266,42 +247,37 @@ impl UnigramTrainer {
         // approximately by assuming that all tokens `i` would be replaced with
         // alternatives[i] if removed.
         for (id, (token, score)) in vocab.iter().enumerate() {
-            if token_frequencies[id] == 0.0 && !keep[id] {
-                // Not found in Viterbi path. Can remove this entry safely.
+            if token_frequencies[id] == 0 && !keep[id] {
+                // This token never occurs?
                 continue;
             } else if alternatives[id].is_empty() {
                 // No alternatives. Keeps this entry.
                 pruned_vocab.push((token.clone(), *score));
-            } else {
-                // The number of sentences in which the token `i` appears.
-                let mut f: f64 = inverted[id].len() as f64;
-
-                if !f.is_normal() {
-                    continue;
-                }
-
-                f /= samples.len() as f64; // normalizes by all samples frequency.
-
-                let logprob = token_frequencies[id].ln() - logsum_token_frequencies;
+            } else if token_frequencies[id] != 0 {
+                let freq = token_frequencies[id] as f64;
+                let logprob = freq.ln() - logsum_token_frequencies;
 
                 // After removing token `i`, its frequency is re-assigned
                 // its alternatives.
-                let logsum_alternative = (sum_token_frequencies
-                    + token_frequencies[id] * (alternatives.len() - 1) as f64)
-                    .ln();
+                let logsum_alternative =
+                    (sum_token_frequencies + freq * (alternatives.len() - 1) as f64).ln();
 
                 // The frequencies of alternatives are increased by the
                 // frequency of the removed token.
                 let mut logprob_alternative = 0.0;
                 for n in &alternatives[id] {
                     logprob_alternative +=
-                        (token_frequencies[*n] + token_frequencies[id]).ln() - logsum_alternative;
+                        ((token_frequencies[*n] as f64) + freq).ln() - logsum_alternative;
                 }
 
-                // loss: the diff of likelihood after removing the sentencepieces[i].
-                let loss = f * (logprob - logprob_alternative);
-
-                assert!(!loss.is_nan());
+                // The difference in likelihood after removing the token.
+                let loss = (freq / samples.len() as f64) * (logprob - logprob_alternative);
+                if !loss.is_normal() {
+                    panic!(
+                        "loss is f64::NaN (loss={}, freq={}, logprob={}, logprob_alternative={})",
+                        loss, freq, logprob, logprob_alternative
+                    );
+                }
 
                 candidates.push((id, loss));
             }

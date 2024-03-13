@@ -72,92 +72,70 @@ You can install the [Rust binary crate](https://crates.io/crates/tokengeex) thro
 cargo install tokengeex --features cli
 ```
 
-Here's a sample command to train a strict 1k vocabulary on 250MB of data.
+Here's the full command used to train vocabularies.
 
-```bash
-RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-250MB.bin' \
-    --output 'data/vocab/code-1k-strict.json' \
-    --special-token '<|CODE_PREFIX|>' \
-    --special-token '<|CODE_SUFFIX|>' \
-    --special-token '<|CODE_MIDDLE|>' \
-    --special-token '<|EOS|>' \
-    --vocab-size 1024 \
-    --shrinking-factor '0.7' \
-    --num-sub-iterations '2' \
-    --vg-max-token-length '8' \
-    --vg-max-words-per-token '2' \
-    --vg-initial-vocab-size '4096' \
-    --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-4k-250MB-strict.json' \
-    --vg-strict true
+```shell
+RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=8 tokengeex train --model 'unigram' \
+    --output 'tokenizer.json' \
+    --vocab-size 65536 \
+    --processor nfc \
+    --processor crlf \
+    --processor capcode \
+    --initial-vocab-max-token-length 24 \
+    --initial-vocab-size 1000000 \
+    --initial-vocab-insert-probability 0.01 \
+    --initial-vocab-allow '(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)' \
+    --unigram-shrinking-factor 0.75 \
+    --unigram-num-sub-iterations 2 \
+    --added-tokens-file ./hub/tokens/added.json \
+    $(for lang in markdown; do echo "--train ${lang}:./hub/data/train/${lang}.bin --valid ${lang}:./hub/data/valid/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
 ```
 
-Here's a sample command to train a strict 4k vocabulary on 250MB of data.
+The full language list is:
 
-```bash
-RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-250MB.bin' \
-    --output 'data/vocab/code-4k-strict.json' \
-    --special-token '<|CODE_PREFIX|>' \
-    --special-token '<|CODE_SUFFIX|>' \
-    --special-token '<|CODE_MIDDLE|>' \
-    --special-token '<|EOS|>' \
-    --vocab-size 4096 \
-    --shrinking-factor '0.7' \
-    --num-sub-iterations '2' \
-    --suggested-tokens-file 'data/tokens/suggested.json' \
-    --added-tokens-file 'data/tokens/added.json' \
-    --vg-max-token-length '16' \
-    --vg-max-words-per-token '3' \
-    --vg-initial-vocab-size '100000' \
-    --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-100k-250MB-strict.json' \
-    --vg-strict true
+```shell
+$(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ./hub/data/train/${lang}.bin --valid ./hub/data/valid/${lang}.bin --test ./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
 ```
 
-Here's a sample command to train a strict 16k vocabulary on 250MB of data.
+### Regexes
 
-```bash
-RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-250MB.bin' \
-    --output 'data/vocab/code-16k-strict.json' \
-    --special-token '<|CODE_PREFIX|>' \
-    --special-token '<|CODE_SUFFIX|>' \
-    --special-token '<|CODE_MIDDLE|>' \
-    --special-token '<|EOS|>' \
-    --vocab-size 16384 \
-    --shrinking-factor '0.7' \
-    --num-sub-iterations '2' \
-    --suggested-tokens-file 'data/tokens/suggested.json' \
-    --added-tokens-file 'data/tokens/added.json' \
-    --vg-max-token-length '24' \
-    --vg-max-words-per-token '3' \
-    --vg-initial-vocab-size '1000000' \
-    --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-1000k-250MB-strict.json' \
-    --vg-strict true
+Here is an example set of Regexes used to influence the initial vocabulary.
+
+| Regex                                                                     | Description                                                                                                                                                                                          | Example                               |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `^.$`                                                                     | Any lone Unicode character.                                                                                                                                                                          | `a`, `好`                             |
+| `^D?[UC]? $`                                                              | Any capcode marker.                                                                                                                                                                                  | `DC `, `U `                           |
+| `^ ?[0-9]{1,4}$`                                                          | Any number of 4 digits or less. May begin with a space.                                                                                                                                              | ` 123`, `9`                           |
+| `^[\u3400-\u4DBF\u4E00-\u9FFF]+$`                                         | Any sequence of Chinese characters.                                                                                                                                                                  | `我叫罗杰斯`                          |
+| `^ ?[a-z]+(?: [a-z]+){0,3}$`                                              | Any space separated sequence of up to 4 lowercase words. May begin with a space.                                                                                                                     | ` in order to`, `hello`               |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`          | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed.                                                                                        | `DC complexDU casingD 123`            |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`       | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots and underscores in-between words are allowed.                                     | ` users_D table`, `1.D 0`             |
+| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$` | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots, underscores, colons, dashes, slashes, and aterisks in-between words are allowed. | `D https://D github.D com`            |
+| `^<D?[UC]? [a-z]+(?:>\|/>\| />)?$`                                        | Any capcode-encoded XML/HTML tag, opened or closed.                                                                                                                                                  | `<D a>`, `<DU a`, `<D a/>`, `<D a />` |
+| `^[[:punct:][:space:][DCU]]+$`                                            | Any sequence of punctuation, whitespace, and capcode.                                                                                                                                                | `\t`, `;\n\t\t`, `(D`                 |
+
+### Configurations
+
+#### Strict
+
+Allows XML/HTML tags, sequences of up to three words (letters, capcode, numbers), Chinese words, Unicode characters.
+
+```regexp
+(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
 ```
 
-Here's a sample command to train a strict 32k vocabulary on 250MB of data.
+#### Base
 
-```bash
-RUST_LOG=info TOKENGEEX_PARALLELISM=true tokengeex train --model 'unigram' \
-    --input 'data/train/code-100MB.bin' \
-    --output 'data/vocab/code-32k-strict.json' \
-    --special-token '<|CODE_PREFIX|>' \
-    --special-token '<|CODE_SUFFIX|>' \
-    --special-token '<|CODE_MIDDLE|>' \
-    --special-token '<|EOS|>' \
-    --vocab-size 32768 \
-    --shrinking-factor '0.7' \
-    --num-sub-iterations '2' \
-    --suggested-tokens-file 'data/tokens/suggested.json' \
-    --added-tokens-file 'data/tokens/added.json' \
-    --vg-max-token-length '24' \
-    --vg-max-words-per-token '3' \
-    --vg-initial-vocab-size '1000000' \
-    --vg-insert-probability '0.01' \
-    --vg-cache 'data/cache/code-1000k-100MB-strict.json' \
-    --vg-strict true
+Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots), Chinese words, Unicode characters.
+
+```regexp
+(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+```
+
+#### Advanced
+
+Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots, slashes, colons, dashes, asteriks), Chinese words, Unicode characters.
+
+```regexp
+(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._/:\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
 ```

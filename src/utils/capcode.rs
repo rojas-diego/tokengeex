@@ -273,6 +273,7 @@ pub fn is_unicode_modifier(c: char) -> bool {
 }
 
 /// Check whether a character is capcode marker.
+#[allow(unused)]
 pub fn is_marker(c: char) -> bool {
     c == CAPITALIZE_CAPCODE_CHAR || c == UPPERCASE_CAPCODE_CHAR || c == DELETE_CAPCODE_CHAR
 }

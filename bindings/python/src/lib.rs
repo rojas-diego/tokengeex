@@ -1,24 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::*;
 
-#[pyfunction]
-#[pyo3(name = "encode")]
-fn tokengeex_capcode_encode_py(input: &str) -> PyResult<String> {
-    Ok(tokengeex::capcode::encode(input))
-}
-
-#[pyfunction]
-#[pyo3(name = "decode")]
-fn tokengeex_capcode_decode_py(input: &str) -> PyResult<String> {
-    Ok(tokengeex::capcode::decode(input))
-}
-
-#[pyfunction]
-#[pyo3(name = "is_marker")]
-fn tokengeex_capcode_is_marker_py(c: char) -> PyResult<bool> {
-    Ok(tokengeex::capcode::is_marker(c))
-}
-
 #[pyclass(dict, module = "tokengeex", name = "Tokenizer")]
 #[derive(Clone)]
 struct PyTokenizer {
@@ -43,18 +25,6 @@ impl PyTokenizer {
     #[pyo3(text_signature = "(self, ids)")]
     fn decode(&self, ids: Vec<u32>) -> String {
         self.tokenizer.decode(&ids)
-    }
-
-    /// Encode many samples in parallel.
-    #[pyo3(text_signature = "(self, many_ids)")]
-    fn encode_many(&self, many_ids: Vec<&str>) -> Vec<Vec<u32>> {
-        self.tokenizer.encode_many(&many_ids)
-    }
-
-    /// Decode many samples in parallel.
-    #[pyo3(text_signature = "(self, many_texts)")]
-    fn decode_many(&self, many_texts: Vec<Vec<u32>>) -> Vec<String> {
-        self.tokenizer.decode_many(&many_texts)
     }
 
     fn token_to_id(&self, token: &str) -> Option<u32> {
@@ -107,14 +77,7 @@ fn tokengeex_load_py(filename: &str) -> PyResult<PyTokenizer> {
 
 #[pymodule]
 #[pyo3(name = "tokengeex")]
-fn tokengeex_module(py: Python, m: &PyModule) -> PyResult<()> {
-    // Submodule: Capcode
-    let capcode = PyModule::new(py, "capcode")?;
-    capcode.add_function(wrap_pyfunction!(tokengeex_capcode_encode_py, capcode)?)?;
-    capcode.add_function(wrap_pyfunction!(tokengeex_capcode_decode_py, capcode)?)?;
-    capcode.add_function(wrap_pyfunction!(tokengeex_capcode_is_marker_py, capcode)?)?;
-    m.add_submodule(capcode)?;
-
+fn tokengeex_module(_: Python, m: &PyModule) -> PyResult<()> {
     // Module: TokenGeeX
     m.add_function(wrap_pyfunction!(tokengeex_load_py, m)?)?;
 

@@ -2,11 +2,8 @@
 // License: https://github.com/huggingface/tokenizers/blob/4a8105c36671ef46738d6e2799c55198139b87b2/LICENSE
 
 use crate::{
-    core::Model,
-    utils::{
-        lattice::Lattice,
-        trie::{Trie, TrieBuilder},
-    },
+    utils::{lattice::Lattice, trie::Trie},
+    Model, ScoredToken, Token,
 };
 use std::collections::HashMap;
 
@@ -15,13 +12,6 @@ mod trainer;
 
 pub use serialization::Vocab;
 pub use trainer::*;
-
-/// An arbitrary sequence of bytes. Almost always valid UTF-8 but not
-/// guaranteed.
-pub type Token = Vec<u8>;
-
-/// The byte fallbacks for the first 256 ASCII characters.
-pub type ScoredToken = (Token, f64);
 
 #[derive(Clone, Default)]
 /// Unigram is a tokenization model that uses a vocabulary of scored tokens to
@@ -34,22 +24,19 @@ pub type ScoredToken = (Token, f64);
 pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<Token, u32>,
-    trie: Trie<(usize, usize)>,
+    trie: Trie<(u32, u32)>,
 }
 
 impl Unigram {
     /// Create a new `Unigram` model from a vocabulary of scored tokens.
-    // TODO: Should take a UNK token as an argument.
     pub fn from(vocab: Vec<ScoredToken>) -> Self {
         let mut token_to_ids: HashMap<Token, u32> = HashMap::new();
-        let mut trie_builder = TrieBuilder::default();
+        let mut trie = Trie::default();
 
         for (id, (token, _)) in vocab.iter().enumerate() {
             token_to_ids.insert(token.clone(), id as u32);
-            trie_builder.push(token, (id, token.len()));
+            trie.push(token, (id as u32, token.len() as u32));
         }
-
-        let trie = trie_builder.build();
 
         Self {
             vocab,
@@ -60,8 +47,6 @@ impl Unigram {
 
     /// Populates a lattice with all the possible tokenizations of the input
     /// sentence.
-    // TODO: At the moment, if there's no way to tokenize the sentence, we
-    // panic. We should use an UNK token instead.
     pub(super) fn populate_nodes(&self, lattice: &mut Lattice) {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = lattice.sentence;
@@ -74,16 +59,11 @@ impl Unigram {
                 .trie
                 .common_prefix_search(suffix.iter().copied(), &mut buff)
             {
-                let score = &self.vocab[id].1;
+                let score = &self.vocab[id as usize].1;
 
-                lattice.insert(pos, len, *score, id);
+                lattice.insert(pos, len as usize, *score, id as usize);
             }
         }
-    }
-
-    /// Iterate of vocabulary of the model as a pair of `(token, score)`.
-    pub(super) fn iter(&self) -> UnigramIterator {
-        UnigramIterator { model: self, i: 0 }
     }
 
     /// Access the vocabulary of the model.
@@ -92,32 +72,9 @@ impl Unigram {
     }
 }
 
-/// Iterator to iterate of vocabulary of the model, and their relative score.
-pub struct UnigramIterator<'a> {
-    model: &'a Unigram,
-    i: usize,
-}
-
-impl<'a> Iterator for UnigramIterator<'a> {
-    type Item = &'a ScoredToken;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let i = self.i;
-        if i < self.model.vocab_size() {
-            let r = Some(&self.model.vocab[i]);
-            self.i += 1;
-            r
-        } else {
-            None
-        }
-    }
-}
-
 impl Model for Unigram {
     /// Encode the input sequence into a sequence of token IDs in O(n) time
     /// using the SentencePiece DP algorithm.
-    // TODO: At the moment, if there's no way to tokenize the sentence, we
-    // panic. We should use an UNK token instead.
     fn encode(&self, input: &str) -> Vec<u32> {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = input.as_bytes();
@@ -155,6 +112,8 @@ impl Model for Unigram {
                 .trie
                 .common_prefix_search(suffix.iter().copied(), &mut buff)
             {
+                let id = id as usize;
+                let len = len as usize;
                 let node = &dp[pos + len];
                 let score = dp[pos].score + self.vocab[id].1;
 

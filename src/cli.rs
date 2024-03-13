@@ -1,6 +1,7 @@
+use std::{collections::HashSet, io::BufRead};
 use tokengeex::{
-    capcode,
-    unigram::{ScoredToken, Unigram, UnigramTrainerBuilder, Vocab, VocabularyGenerator},
+    parallelism::MaybeParallelRefIterator, unigram, CapcodeProcessor, CrlfProcessor, Model,
+    Processor, ProcessorWrapper, Tokenizer, UnicodeProcessor, VocabularyGenerator,
 };
 
 mod flags {
@@ -9,42 +10,52 @@ mod flags {
             /// Train a new tokeniser from data.
             cmd train {
                 // --- General Purpose ---
-                /// Kind of model to train. Unigram is the only one supported.
+                /// Kind of model to train.
                 required -m, --model model: String
-                /// Input dataset filepath. Must be 0x00 separated.
-                required -i, --input input: String
-                /// Output vocabulary filepath.
+                /// Output tokeniser filepath.
                 required -o, --output output: String
-
-                // --- Tokenizer ---
-                /// Special token.
-                repeated --special-token special_token: String
-
-                // --- Model Trainer Parameters ---
                 /// Desired vocabulary size.
                 required -v, --vocab-size vocab_size: usize
-                /// How much to shrink the vocabulary at each iteration.
-                optional --shrinking-factor shrinking_factor: f64
-                /// Number of sub-iterations for the EM algorithm.
-                optional --num-sub-iterations num_sub_iterations: usize
+
+                // --- Data ---
+                /// List of source files to train the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
+                repeated --train input: String
+                /// List of source files to validate the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
+                repeated --valid valid: String
+                /// List of source files to test the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
+                repeated --test test: String
+
+                // --- Processing ---
+                /// Apply a processor to the input data.
+                repeated --processor processor: String
+
+                // --- Suggested, Added and Special Tokens ---
                 /// Suggested token file.
                 repeated --suggested-tokens-file suggested_tokens_file: String
                 /// Added token file.
                 repeated --added-tokens-file added_tokens_file: String
+                /// Special token.
+                repeated --special-token special_token: String
 
-                // --- Vocabulary Generator ---
-                /// Max length of a token in characters.
-                optional --vg-max-token-length vg_max_token_length: usize
-                /// Max number of words per token.
-                optional --vg-max-words-per-token vg_max_words_per_token: usize
+                // --- Initial Vocab ---
                 /// The size of the initial vocabulary.
-                optional --vg-initial-vocab-size vg_initial_vocab_size: usize
+                optional --initial-vocab-size initial_vocab_size: usize
                 /// Probability of inserting a new token to the vocabulary.
-                optional --vg-insert-probability vg_insert_probability: f64
-                /// Filepath where to cache the initial vocabulary.
-                optional --vg-cache vg_cache: String
-                /// Strict boolean.
-                optional --vg-strict vg_strict: bool
+                optional --initial-vocab-insert-probability initial_vocab_insert_probability: f64
+                /// Substrings that match this Regex will be considered for
+                /// the vocabulary.
+                optional --initial-vocab-allow initial_vocab_allow: String
+                /// Maximum token length.
+                optional --initial-vocab-max-token-length initial_vocab_max_token_length: usize
+
+                // --- Unigram ---
+                /// How much to shrink the vocabulary at each iteration.
+                optional --unigram-shrinking-factor unigram_shrinking_factor: f64
+                /// Number of sub-iterations for the EM algorithm.
+                optional --unigram-num-sub-iterations unigram_num_sub_iterations: usize
             }
 
             /// Encode text using a tokeniser.
@@ -62,16 +73,6 @@ mod flags {
                 /// Comma separated list of token IDs. Otherwise, stdin is used.
                 optional -i, --input input: String
             }
-
-            /// Encode or decode capcode text.
-            cmd capcode {
-                /// Input text. Otherwise, stdin is used.
-                optional -i, --input input: String
-                /// Decode boolean.
-                optional -d, --decode decode: bool
-                /// Encode boolean.
-                optional -e, --encode encode: bool
-            }
         }
     }
 }
@@ -83,7 +84,7 @@ fn encode(input: Option<&str>, vocab: &str) {
         |s| s.to_string(),
     );
 
-    let tokenizer = tokengeex::core::load(vocab).unwrap();
+    let tokenizer = tokengeex::load(vocab).unwrap();
 
     let encoded = tokenizer.encode(&input);
 
@@ -112,7 +113,7 @@ fn decode(input: Option<&str>, vocab: &str) {
         |s| s.to_string(),
     );
 
-    let tokenizer = tokengeex::core::load(vocab).unwrap();
+    let tokenizer = tokengeex::load(vocab).unwrap();
 
     let decoded = tokenizer.decode(
         &input
@@ -124,28 +125,117 @@ fn decode(input: Option<&str>, vocab: &str) {
     println!("{}", decoded);
 }
 
-/// Encode or decode capcode text.
-fn capcode(input: Option<&str>, encode: Option<bool>, decode: Option<bool>) {
-    let input = input.map_or_else(
-        || std::io::read_to_string(&mut std::io::stdin()).unwrap(),
-        |s| s.to_string(),
+fn load_processors(processors: &[String]) -> Vec<ProcessorWrapper> {
+    processors
+        .iter()
+        .map(|name| {
+            let processor = match name.as_str() {
+                "capcode" => ProcessorWrapper::Capcode(CapcodeProcessor),
+                "crlf" => ProcessorWrapper::Crlf(CrlfProcessor),
+                "nfc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfc),
+                "nfd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfd),
+                "nfkc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkc),
+                "nfkd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkd),
+                _ => panic!("Processor {:?} is not supported.", name),
+            };
+
+            log::info!("Using processor {:?}", name);
+
+            processor
+        })
+        .collect()
+}
+
+fn load_tokens_files(files: &[String], mode: &str) -> HashSet<String> {
+    files
+        .iter()
+        .flat_map(|filename| {
+            let file = std::fs::read_to_string(filename)
+                .unwrap_or_else(|_| panic!("Could not read tokens file {:?}", filename));
+
+            let tokens: Vec<String> = serde_json::from_str(&file)
+                .unwrap_or_else(|_| panic!("Could not parse tokens file {:?}", filename));
+
+            log::info!(
+                "Loaded {} {} tokens from {:?}",
+                tokens.len(),
+                mode,
+                filename
+            );
+
+            tokens
+        })
+        .collect()
+}
+
+fn load_samples<F>(path: &str, process: F) -> Vec<String>
+where
+    F: Fn(&str) -> String,
+{
+    let file =
+        std::fs::File::open(path).unwrap_or_else(|e| panic!("failed to open {:?}: {:?}", path, e));
+    let mut reader = std::io::BufReader::new(file);
+    let mut buffer = Vec::new();
+    let mut samples = Vec::new();
+
+    loop {
+        match reader.read_until(0x00, &mut buffer) {
+            Ok(0) => {
+                break;
+            }
+            Ok(_) => {
+                let sample = String::from_utf8(buffer.clone()).unwrap();
+                let sample = process(sample.trim_end_matches('\0'));
+
+                if !sample.is_empty() {
+                    samples.push(sample);
+                }
+
+                buffer.clear();
+            }
+            Err(e) => panic!("failed to read from {:?}: {:?}", path, e),
+        }
+    }
+
+    let samples_total_bytes = samples.iter().map(|s| s.len()).sum::<usize>() as u64;
+
+    log::info!(
+        "Loaded {} samples from {:?} ({}).",
+        samples.len(),
+        path,
+        format_bytes_as_mb(samples_total_bytes)
     );
 
-    let mut encode = encode.unwrap_or(false);
-    let decode = decode.unwrap_or(false);
+    samples
+}
 
-    if encode && decode {
-        panic!("Cannot encode and decode at the same time");
-    }
-    if !encode && !decode {
-        encode = true;
-    }
+fn load_split(sources: &[String], processor: &[ProcessorWrapper]) -> Vec<(String, Vec<String>)> {
+    sources
+        .maybe_par_iter()
+        .map(|source| {
+            let pieces = source.split(':').collect::<Vec<&str>>();
 
-    if encode {
-        println!("{}", capcode::encode(&input));
-    } else {
-        println!("{}", capcode::decode(&input));
-    }
+            if pieces.len() != 2 {
+                panic!(
+                    "Invalid source format: {:?}. Expected to be formatted as {{name}}:{{path}}",
+                    source
+                );
+            }
+
+            (
+                pieces[0].to_string(),
+                load_samples(pieces[1], |s| {
+                    processor
+                        .iter()
+                        .fold(s.to_string(), |s, p| p.preprocess(&s))
+                }),
+            )
+        })
+        .collect::<Vec<(String, Vec<String>)>>()
+}
+
+fn format_bytes_as_mb(bytes: u64) -> String {
+    format!("{:.2}MB", bytes as f64 / 1_000_000.0)
 }
 
 /// Train a new tokeniser from data.
@@ -153,152 +243,162 @@ fn capcode(input: Option<&str>, encode: Option<bool>, decode: Option<bool>) {
 fn train(
     // --- General Purpose ---
     model: &str,
-    input: &str,
     output: &str,
-    // --- Tokenizer ---
-    special_tokens: Vec<String>,
-    // --- Model Trainer Parameters ---
     vocab_size: usize,
-    shrinking_factor: f64,
-    num_sub_iterations: usize,
-    suggested_tokens_files: Vec<String>,
-    added_tokens_files: Vec<String>,
-    // --- Vocabulary Generator ---
-    vg_max_token_length: usize,
-    vg_max_words_per_token: usize,
-    vg_initial_vocab_size: usize,
-    vg_insert_probability: f64,
-    vg_cache: Option<String>,
-    vg_strict: bool,
+    // --- Data ---
+    train: &Vec<String>,
+    valid: &Vec<String>,
+    test: &Vec<String>,
+    // --- Processing ---
+    processors: &Vec<String>,
+    // --- Suggested, Added and Special Tokens ---
+    suggested_tokens_files: &Vec<String>,
+    added_tokens_files: &Vec<String>,
+    _special_tokens: &Vec<String>,
+    // --- Initial Vocabulary ---
+    initial_vocab_size: usize,
+    initial_vocab_max_token_length: usize,
+    initial_vocab_insert_probability: f64,
+    initial_vocab_allow: &str,
+    // --- Unigram ---
+    unigram_shrinking_factor: f64,
+    unigram_num_sub_iterations: usize,
 ) {
-    assert!(model == "unigram", "Only 'unigram' model is supported");
+    assert!(
+        train.len() > 0,
+        "At least one training dataset must be provided"
+    );
 
-    log::info!("Training {} model on '{}'", model, input);
-    log::info!("Special tokens: {:?}", special_tokens);
+    let processors = load_processors(processors);
+    let added_tokens = load_tokens_files(added_tokens_files, "added");
+    let suggested_tokens = load_tokens_files(suggested_tokens_files, "suggested");
+
     log::info!(
-        "Model Trainer Parameters: vocab_size={}, shrinking_factor={}, num_sub_iterations={}",
+        "Loaded {} added tokens and {} suggested tokens.",
+        added_tokens.len(),
+        suggested_tokens.len()
+    );
+
+    log::info!(
+        "Training {:?} model with {} vocabulary entries. Writing to {:?}.",
+        model,
         vocab_size,
-        shrinking_factor,
-        num_sub_iterations
-    );
-    log::info!(
-        "Vocabulary Generator: max_token_length={}, max_words_per_token={}, initial_vocab_size={}, insert_probability={}, cache={} strict={}",
-        vg_max_token_length,
-        vg_max_words_per_token,
-        vg_initial_vocab_size,
-        vg_insert_probability,
-        vg_cache.as_deref().unwrap_or("None"),
-        vg_strict
+        output,
     );
 
-    fn collect_tokens(files: Vec<String>) -> Vec<String> {
-        files
-            .iter()
-            .flat_map(|file| {
-                let tokens =
-                    serde_json::from_str::<Vec<String>>(&std::fs::read_to_string(file).unwrap())
-                        .unwrap();
-                log::info!("Read {} tokens from {:?}", tokens.len(), file);
-                tokens
-            })
-            .collect()
-    }
+    let train_samples = load_split(&train, &processors);
+    let valid_samples = load_split(&valid, &processors);
+    let test_samples = load_split(&test, &processors);
 
-    let suggested_tokens = collect_tokens(suggested_tokens_files);
-    let added_tokens = collect_tokens(added_tokens_files);
+    match model {
+        "unigram" => {
+            log::info!(
+                "Generating initial vocabulary of size {} (max_token_length: {}, insert_probability: {}).",
+                initial_vocab_size, initial_vocab_max_token_length, initial_vocab_insert_probability
+            );
 
-    let mut trainer = UnigramTrainerBuilder::default()
-        .vocab_size(vocab_size)
-        .shrinking_factor(shrinking_factor)
-        .num_sub_iterations(num_sub_iterations)
-        .added_tokens(added_tokens)
-        .build()
-        .unwrap();
+            log::info!("Using allow rule: {:?}", initial_vocab_allow);
 
-    let dataset = std::fs::read(input).unwrap();
+            let mut vocab_generator = VocabularyGenerator::new(
+                initial_vocab_max_token_length,
+                initial_vocab_insert_probability,
+                initial_vocab_allow,
+            );
 
-    log::info!("Read {} bytes from '{}'", dataset.len(), input);
+            for (source, samples) in &train_samples {
+                log::info!("Collecting frequent tokens from {:?}.", source);
 
-    // The dataset is composed of 0x00 separated samples which are UTF-8
-    // encoded. We obtain the samples by splitting the dataset on 0x00 bytes
-    // and then converting the resulting byte slices to UTF-8 strings.
-    let samples: Vec<String> = dataset
-        .split(|&b| b == 0x00)
-        .map(|s| tokengeex::capcode::encode(&String::from_utf8_lossy(s)))
-        .collect();
-
-    log::info!("Extracted {} samples", samples.len());
-
-    // We can dispose of the dataset to free up memory.
-    drop(dataset);
-
-    samples.iter().for_each(|s| trainer.feed(s));
-
-    log::info!("Loaded {} samples", samples.len());
-    log::info!("Generating initial vocabulary");
-
-    let initial_vocab_generator = VocabularyGenerator::new(
-        vg_max_words_per_token,
-        vg_max_token_length,
-        vg_insert_probability,
-        suggested_tokens,
-        vg_strict,
-    );
-    let vocab = match vg_cache {
-        Some(vg_cache) => {
-            if let Ok(cache) = std::fs::read_to_string(&vg_cache) {
-                let vocab: Vec<ScoredToken> = serde_json::from_str::<Vocab>(&cache).unwrap().into();
+                vocab_generator.feed(&samples);
 
                 log::info!(
-                    "Loaded {} tokens from cached vocab file {:?}",
-                    vocab.len(),
-                    vg_cache
+                    "Collected frequent tokens from {:?}. Total: {}",
+                    source,
+                    vocab_generator.current_size()
                 );
-
-                vocab
-            } else {
-                let vocab = initial_vocab_generator
-                    .generate_vocabulary(samples.iter().map(AsRef::as_ref), vg_initial_vocab_size);
-
-                log::info!(
-                    "Generated {} tokens and saved to {:?}",
-                    vocab.len(),
-                    vg_cache
-                );
-
-                std::fs::write(
-                    &vg_cache,
-                    serde_json::to_string(&Vocab::from(vocab.clone())).unwrap(),
-                )
-                .unwrap();
-
-                vocab
             }
+
+            let (vocab, _) =
+                vocab_generator.generate(initial_vocab_size, &suggested_tokens, &added_tokens);
+
+            let vocab_total_bytes = vocab.iter().map(|(s, _)| s.len()).sum::<usize>() as u64;
+
+            log::info!(
+                "Generated initial vocabulary of size {} ({}).",
+                vocab.len(),
+                format_bytes_as_mb(vocab_total_bytes)
+            );
+
+            log::info!("Training unigram model.");
+            let mut model = unigram::Unigram::from(vocab);
+
+            let mut trainer = unigram::UnigramTrainer::new(
+                vocab_size,
+                unigram_num_sub_iterations,
+                unigram_shrinking_factor,
+            );
+
+            let all_train_samples = train_samples
+                .iter()
+                .flat_map(|(_, samples)| samples.iter())
+                .map(|s| s.as_str())
+                .collect::<Vec<&str>>();
+
+            let mut epoch = 0;
+            let mut should_continue = true;
+
+            while should_continue {
+                log::info!("Epoch {} | Vocabulary size: {}", epoch, model.vocab_size());
+
+                should_continue = trainer.train(&mut model, &all_train_samples);
+
+                for (source, samples) in &valid_samples {
+                    log::info!("Evaluating on {:?}.", source);
+
+                    let total_tokens = samples
+                        .maybe_par_iter()
+                        .map(|s| model.encode(s).len())
+                        .sum::<usize>();
+
+                    let total_bytes = samples.iter().map(|s| s.len()).sum::<usize>();
+
+                    log::info!(
+                        "Compression on {:?}: {:.2}",
+                        source,
+                        total_bytes as f64 / total_tokens as f64
+                    );
+                }
+
+                epoch += 1;
+            }
+
+            // Test set evaluation
+            for (source, samples) in &test_samples {
+                log::info!("Evaluating on {:?}.", source);
+
+                let total_tokens = samples
+                    .maybe_par_iter()
+                    .map(|s| model.encode(s).len())
+                    .sum::<usize>();
+
+                let total_bytes = samples.iter().map(|s| s.len()).sum::<usize>();
+
+                log::info!(
+                    "Compression on {:?}: {:.2}",
+                    source,
+                    total_bytes as f64 / total_tokens as f64
+                );
+            }
+
+            log::info!("Training finished. Writing to {:?}.", output);
+
+            let tokenizer = Tokenizer::new(tokengeex::ModelWrapper::Unigram(model), processors);
+
+            tokenizer.save(output).unwrap();
         }
-        None => {
-            let vocab = initial_vocab_generator
-                .generate_vocabulary(samples.iter().map(AsRef::as_ref), vg_initial_vocab_size);
-
-            log::info!("Generated {} tokens", vocab.len());
-
-            vocab
+        _ => {
+            panic!("Model {:?} is not supported.", model);
         }
-    };
-
-    log::info!("Training model");
-
-    let mut model = Unigram::default();
-    trainer.train(&mut model, vocab).unwrap();
-
-    let mut tokenizer = tokengeex::core::Tokenizer::from(model);
-
-    let special_tokens: Vec<&str> = special_tokens.iter().map(AsRef::as_ref).collect();
-
-    tokenizer.add_special_tokens(special_tokens.as_slice());
-
-    log::info!("Saving model to {:?}", output);
-
-    tokenizer.save(output).unwrap();
+    }
 }
 
 fn main() {
@@ -309,23 +409,26 @@ fn main() {
             train(
                 // --- General Purpose ---
                 &flags.model,
-                &flags.input,
                 &flags.output,
-                // --- Tokenizer ---
-                flags.special_token,
-                // --- Model Trainer Parameters ---
                 flags.vocab_size,
-                flags.shrinking_factor.unwrap_or(0.75),
-                flags.num_sub_iterations.unwrap_or(4),
-                flags.suggested_tokens_file,
-                flags.added_tokens_file,
-                // --- Vocabulary Generator ---
-                flags.vg_max_token_length.unwrap_or(24),
-                flags.vg_max_words_per_token.unwrap_or(3),
-                flags.vg_initial_vocab_size.unwrap_or(100000),
-                flags.vg_insert_probability.unwrap_or(0.02),
-                flags.vg_cache,
-                flags.vg_strict.unwrap_or(false),
+                // --- Data ---
+                &flags.train,
+                &flags.valid,
+                &flags.test,
+                // --- Processing ---
+                &flags.processor,
+                // --- Suggested, Added and Special Tokens ---
+                &flags.suggested_tokens_file,
+                &flags.added_tokens_file,
+                &flags.special_token,
+                // --- Initial Vocab ---
+                flags.initial_vocab_size.unwrap_or(100000),
+                flags.initial_vocab_max_token_length.unwrap_or(24),
+                flags.initial_vocab_insert_probability.unwrap_or(0.01),
+                &flags.initial_vocab_allow.unwrap_or("^*$".into()),
+                // --- Unigram ---
+                flags.unigram_shrinking_factor.unwrap_or(0.75),
+                flags.unigram_num_sub_iterations.unwrap_or(2),
             );
         }
         flags::TokengeexCmd::Encode(flags) => {
@@ -333,9 +436,6 @@ fn main() {
         }
         flags::TokengeexCmd::Decode(flags) => {
             decode(flags.input.as_deref(), &flags.vocab);
-        }
-        flags::TokengeexCmd::Capcode(flags) => {
-            capcode(flags.input.as_deref(), flags.encode, flags.decode);
         }
     }
 }

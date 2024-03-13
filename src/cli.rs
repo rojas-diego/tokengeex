@@ -184,8 +184,13 @@ where
                 break;
             }
             Ok(_) => {
-                let line = String::from_utf8(buffer.clone()).unwrap();
-                samples.push(process(line.trim_end_matches('\0')));
+                let sample = String::from_utf8(buffer.clone()).unwrap();
+                let sample = process(sample.trim_end_matches('\0'));
+
+                if !sample.is_empty() {
+                    samples.push(sample);
+                }
+
                 buffer.clear();
             }
             Err(e) => panic!("failed to read from {:?}: {:?}", path, e),

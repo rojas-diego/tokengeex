@@ -88,6 +88,8 @@ impl UnigramTrainer {
                 let mut expected_frequencies: Vec<f64> = vec![0.0; model.vocab_size()];
 
                 for &sample in chunk {
+                    debug_assert!(!sample.is_empty(), "empty sample");
+
                     // Compute all the possible segmentations of the sample.
                     let mut lattice = Lattice::from(
                         sample.as_bytes(),

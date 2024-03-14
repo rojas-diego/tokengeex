@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::{ScoredToken, Unigram};
 use crate::{
     unigram::Vocab,
@@ -5,7 +7,7 @@ use crate::{
         lattice::Lattice,
         parallelism::{current_num_threads, MaybeParallelSlice},
     },
-    Model,
+    Model, Token,
 };
 use thiserror::Error;
 
@@ -31,7 +33,7 @@ impl UnigramTrainer {
 
     /// Train a Unigram model over a dataset of sentences using the initial
     /// specified initial vocabulary.
-    pub fn train(&mut self, model: &mut Unigram, samples: &[&str]) -> bool {
+    pub fn train(&mut self, model: &mut Unigram, samples: &[&str], keep: &HashSet<Token>) -> bool {
         let desired_vocab_size: usize = (self.vocab_size * 11) / 10;
 
         for i in 0..self.num_sub_iterations {
@@ -47,7 +49,7 @@ impl UnigramTrainer {
 
             // Using this expectation, we compute an alternative vocabulary
             // that maximizes the likelihood of the dataset.
-            let vocab = self.run_m_step(model.vocab(), &expected_frequencies);
+            let vocab = self.run_m_step(model.vocab(), &expected_frequencies, keep);
             log::info!(
                 "M-step completed subiter={} vocab_size={} alternative_vocab_size={}",
                 i,
@@ -66,7 +68,7 @@ impl UnigramTrainer {
         }
 
         // Prunes pieces.
-        *model = Unigram::from(self.prune_vocab(model, model.vocab(), samples));
+        *model = Unigram::from(self.prune_vocab(model, model.vocab(), samples, keep));
 
         true
     }
@@ -120,19 +122,24 @@ impl UnigramTrainer {
 
     /// Runs the M-step of the EM algorithm for the Unigram model. It computes
     /// an alternative vocabulary based on the expected frequencies.
-    fn run_m_step(&self, vocab: &[ScoredToken], expected_frequencies: &[f64]) -> Vec<ScoredToken> {
+    fn run_m_step(
+        &self,
+        vocab: &[ScoredToken],
+        expected_frequencies: &[f64],
+        keep: &HashSet<Token>,
+    ) -> Vec<ScoredToken> {
         assert_eq!(vocab.len(), expected_frequencies.len());
 
-        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.5;
+        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.1;
 
         let mut alternative_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
 
         for (freq, (token, _)) in expected_frequencies.iter().zip(vocab) {
-            if *freq < EXPECTED_FREQUENCY_THRESHOLD && token.len() > 1 {
+            if *freq < EXPECTED_FREQUENCY_THRESHOLD && !keep.contains(token) {
                 continue;
             }
 
-            alternative_vocab.push((token.clone(), f64::max(*freq, 0.5)));
+            alternative_vocab.push((token.clone(), f64::max(*freq, EXPECTED_FREQUENCY_THRESHOLD)));
         }
 
         // I have no clue what's going here. A previous comment pointed to this
@@ -182,13 +189,14 @@ impl UnigramTrainer {
         model: &Unigram,
         vocab: &[ScoredToken],
         samples: &[&str],
+        keep: &HashSet<Token>,
     ) -> Vec<ScoredToken> {
         let bos_id = vocab.len() + 1;
         let eos_id = vocab.len() + 2;
 
         // Segment each token in the vocabulary to understand how it would be
         // resegmented if it was removed from the vocabulary.
-        let mut keep = vec![true; vocab.len()];
+        let mut has_alternative = vec![true; vocab.len()];
         let mut alternatives: Vec<Vec<usize>> = vec![Vec::new(); vocab.len()];
         for (id, (token, _)) in vocab.iter().enumerate() {
             let mut lattice = Lattice::from(token, bos_id, eos_id);
@@ -200,13 +208,13 @@ impl UnigramTrainer {
 
             if nbests.len() == 1 {
                 // There is no other way to segment this token. Keep it.
-                keep[id] = true;
+                has_alternative[id] = true;
             } else if nbests[0].len() > 1 {
                 // Does that mean that the token's score is so low that Unigram
                 // considers segmenting itself using two other tokens?
-                keep[id] = false;
+                has_alternative[id] = false;
             } else if nbests[0].len() == 1 {
-                keep[id] = true;
+                has_alternative[id] = true;
                 for node in &nbests[1] {
                     let alt_id = node.borrow().id;
                     alternatives[id].push(alt_id);
@@ -249,7 +257,12 @@ impl UnigramTrainer {
         // approximately by assuming that all tokens `i` would be replaced with
         // alternatives[i] if removed.
         for (id, (token, score)) in vocab.iter().enumerate() {
-            if token_frequencies[id] == 0 && !keep[id] {
+            if keep.contains(token) {
+                pruned_vocab.push((token.clone(), *score));
+                continue;
+            }
+
+            if token_frequencies[id] == 0 && !has_alternative[id] {
                 // This token never occurs?
                 continue;
             } else if alternatives[id].is_empty() {

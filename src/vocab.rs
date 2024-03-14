@@ -1,4 +1,4 @@
-use crate::{logprobs, parallelism::*, ScoredToken};
+use crate::{logprobs, parallelism::*, ScoredToken, Token};
 use dashmap::DashMap;
 use rand::Rng;
 use regex::Regex;
@@ -93,7 +93,7 @@ impl VocabularyGenerator {
         size: usize,
         suggested_tokens: &HashSet<String>,
         added_tokens: &HashSet<String>,
-    ) -> (Vec<ScoredToken>, HashSet<usize>) {
+    ) -> (Vec<ScoredToken>, HashSet<Token>) {
         let frequent_tokens = self
             .frequencies
             .clone()
@@ -118,7 +118,8 @@ impl VocabularyGenerator {
 
         // Keep track of duplicates, ensuring the earlier occurrence is kept.
         let mut seen: HashSet<&str> = HashSet::new();
-        let mut keep_indices = HashSet::new();
+        // Record which tokens cannot be pruned.
+        let mut keep = HashSet::<Token>::new();
 
         // Add all 256 ASCII characters and byte values to the initial
         // vocabulary. We assume the frequency of each byte is the same as
@@ -126,7 +127,7 @@ impl VocabularyGenerator {
         let highest_freq = frequent_tokens.first().map(|(_, freq)| *freq).unwrap_or(1);
         let mut vocab: Vec<ScoredToken> = (0..255_u8)
             .map(|b| {
-                keep_indices.insert(b as usize);
+                keep.insert(vec![b]);
                 (vec![b], highest_freq as f64)
             })
             .collect();
@@ -135,11 +136,11 @@ impl VocabularyGenerator {
         for (i, token) in added_tokens.iter().enumerate() {
             if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token);
+                keep.insert(token.as_bytes().to_vec());
                 vocab.push((
                     token.as_bytes().to_vec(),
                     (added_tokens_freq[i] as f64) * (token.len() as f64),
                 ));
-                keep_indices.insert(vocab.len() - 1);
             }
         }
 
@@ -183,7 +184,7 @@ impl VocabularyGenerator {
             }
         });
 
-        (vocab, keep_indices)
+        (vocab, keep)
     }
 }
 

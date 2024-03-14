@@ -172,6 +172,7 @@ fn load_tokens_files(files: &[String], mode: &str) -> HashSet<String> {
 struct Source {
     pub name: String,
     pub processed_samples: Vec<String>,
+    #[allow(dead_code)]
     pub processed_total_bytes: usize,
     pub total_bytes: usize,
     #[allow(dead_code)]
@@ -362,52 +363,15 @@ fn train(
             while should_continue {
                 log::info!("Epoch {} | Vocabulary size: {}", epoch, model.vocab_size());
 
-                should_continue = trainer.train(&mut model, &all_train_samples);
+                should_continue = trainer.train(&mut model, &all_train_samples, &keep);
 
-                for source in &train {
-                    let total_tokens = source
-                        .processed_samples
-                        .maybe_par_iter()
-                        .map(|s| model.encode(s).len())
-                        .sum::<usize>();
-
-                    log::info!(
-                        "TRAIN {:?} | {:.2}",
-                        source.name,
-                        source.total_bytes as f64 / total_tokens as f64,
-                    );
-                }
-
-                for source in &valid {
-                    let total_tokens = source
-                        .processed_samples
-                        .maybe_par_iter()
-                        .map(|s| model.encode(s).len())
-                        .sum::<usize>();
-
-                    log::info!(
-                        "VALID {:?} | {:.2}",
-                        source.name,
-                        source.total_bytes as f64 / total_tokens as f64,
-                    );
-                }
+                evaluate("TRAIN", &train, &model);
+                evaluate("VALID", &valid, &model);
 
                 epoch += 1;
             }
 
-            for source in &test {
-                let total_tokens = source
-                    .processed_samples
-                    .maybe_par_iter()
-                    .map(|s| model.encode(s).len())
-                    .sum::<usize>();
-
-                log::info!(
-                    "TEST {:?} | {:.2}",
-                    source.name,
-                    source.total_bytes as f64 / total_tokens as f64,
-                );
-            }
+            evaluate("TEST", &test, &model);
 
             log::info!("Training finished. Writing to {:?}.", output);
 
@@ -417,6 +381,23 @@ fn train(
         _ => {
             panic!("Model {:?} is not supported.", model);
         }
+    }
+}
+
+fn evaluate(split: &str, sources: &Vec<Source>, model: &unigram::Unigram) {
+    for source in sources {
+        let total_tokens = source
+            .processed_samples
+            .maybe_par_iter()
+            .map(|s| model.encode(s).len())
+            .sum::<usize>();
+
+        log::info!(
+            "{} {:?} | {:.2}",
+            split,
+            source.name,
+            source.total_bytes as f64 / total_tokens as f64,
+        );
     }
 }
 

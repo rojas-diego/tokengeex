@@ -47,8 +47,16 @@ impl VocabularyGenerator {
 
             for sample in chunk {
                 for (i, _) in sample.char_indices() {
+                    let mut len = 0;
                     let suffix = &sample[i..];
-                    for (ii, c) in suffix.char_indices().take(self.max_token_length) {
+
+                    for (ii, c) in suffix.char_indices() {
+                        len += c.len_utf8();
+
+                        if len > self.max_token_length {
+                            break;
+                        }
+
                         let candidate = &suffix[..ii + c.len_utf8()];
 
                         if thread_local_allow.is_match(candidate)

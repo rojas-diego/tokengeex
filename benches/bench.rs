@@ -115,17 +115,20 @@ fn vocabulary_generator(c: &mut Criterion) {
     let (samples, _) = load_samples();
     let samples = samples
         .iter()
+        .cycle()
+        .take(1000)
         .map(|s| tokengeex::CapcodeProcessor.preprocess(s))
         .map(|s| tokengeex::CrlfProcessor.preprocess(&s))
         .map(|s| tokengeex::UnicodeProcessor::Nfc.preprocess(&s))
         .collect::<Vec<_>>();
     let bytes = samples.iter().map(|s| s.len()).sum::<usize>();
 
-    let mut generator = tokengeex::VocabularyGenerator::new(24, 0.001, ADVANCED_RE);
+    let mut generator = tokengeex::VocabularyGenerator::new(24, 0.01, ADVANCED_RE);
 
     let mut group = c.benchmark_group("vocabulary_generator");
-    group.confidence_level(0.95);
     group.throughput(Throughput::Bytes(bytes as u64));
+    group.sampling_mode(criterion::SamplingMode::Flat);
+    group.sample_size(10);
 
     group.bench_function("feed", |b| {
         b.iter(|| {

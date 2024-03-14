@@ -43,7 +43,7 @@ def benchmark_batch(documents: list[str]) -> None:
 
     import tokengeex
 
-    tokenizer = tokengeex.load("./benches/unigram.json")  # type: ignore
+    tokenizer = tokengeex.load("./data/unigram-65k.json")  # type: ignore
 
     start = time.perf_counter_ns()
     for doc in documents:

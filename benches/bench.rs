@@ -138,7 +138,7 @@ fn vocabulary_generator(c: &mut Criterion) {
 
 fn tokenizer_unigram(c: &mut Criterion) {
     let (samples, bytes) = load_samples();
-    let tokenizer = tokengeex::load("./benches/unigram.json").unwrap();
+    let tokenizer = tokengeex::load("./data/unigram-65k.json").unwrap();
 
     let mut group = c.benchmark_group("tokenizer_unigram");
     group.confidence_level(0.95).sample_size(25);

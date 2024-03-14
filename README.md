@@ -75,26 +75,20 @@ cargo install tokengeex --features cli
 Here's the full command used to train vocabularies.
 
 ```shell
-RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=8 tokengeex train --model 'unigram' \
+RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=96 tokengeex train --model 'unigram' \
     --output 'tokenizer.json' \
     --vocab-size 65536 \
     --processor nfc \
     --processor crlf \
     --processor capcode \
     --initial-vocab-max-token-length 24 \
-    --initial-vocab-size 1000000 \
-    --initial-vocab-insert-probability 0.01 \
+    --initial-vocab-size 10000000 \
+    --initial-vocab-insert-probability 0.001 \
     --initial-vocab-allow '(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)' \
     --unigram-shrinking-factor 0.75 \
     --unigram-num-sub-iterations 2 \
     --added-tokens-file ./hub/tokens/added.json \
-    $(for lang in markdown; do echo "--train ${lang}:./hub/data/train/${lang}.bin --valid ${lang}:./hub/data/valid/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
-```
-
-The full language list is:
-
-```shell
-$(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ./hub/data/train/${lang}.bin --valid ./hub/data/valid/${lang}.bin --test ./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
+    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --valid ${lang}:./hub/data/valid/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
 ```
 
 ### Regexes

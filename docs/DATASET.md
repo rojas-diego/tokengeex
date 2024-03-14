@@ -51,7 +51,6 @@ From [The Stack v1.2 (Deduplicated)](https://huggingface.co/datasets/bigcode/the
 | R                | 0.1        | 5          | 5         |
 | XML              | 0.05       | 2.5        | 2.5       |
 | Elixir           | 0.05       | 2.5        | 2.5       |
-| Matlab           | 0.05       | 2.5        | 2.5       |
 | LLVM             | 0.05       | 2.5        | 2.5       |
 | Pascal           | 0.05       | 2.5        | 2.5       |
 | Perl             | 0.05       | 2.5        | 2.5       |

@@ -43,9 +43,9 @@ impl VocabularyGenerator {
         samples.maybe_par_chunks(chunk_size).for_each(|chunk| {
             let thread_local_allow = self.allow.clone();
             let mut rng = rand::thread_rng();
+            let mut sample_tokens = HashSet::new();
 
             for sample in chunk {
-                let mut sample_tokens = HashSet::new();
                 for (i, _) in sample.char_indices() {
                     let suffix = &sample[i..];
                     for (ii, c) in suffix.char_indices().take(self.max_token_length) {
@@ -59,9 +59,11 @@ impl VocabularyGenerator {
                     }
                 }
 
-                for token in sample_tokens {
+                for &token in &sample_tokens {
                     *frequencies.entry(token).or_insert(0) += 1;
                 }
+
+                sample_tokens.clear();
             }
         });
 

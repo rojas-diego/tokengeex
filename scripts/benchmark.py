@@ -46,14 +46,15 @@ def benchmark_batch(documents: list[str]) -> None:
     tokenizer = tokengeex.load("./benches/unigram.json")  # type: ignore
 
     start = time.perf_counter_ns()
-    tokenizer.encode_many(documents)
+    for doc in documents:
+        tokenizer.encode(doc)
     end = time.perf_counter_ns()
     print(
         f"TokenGeex    {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e9, 2):>5}s ({'single thread' if num_threads < 2 else '{} threads'.format(num_threads)})"
     )
 
 
-samples = open("./benches/1MB.bin", "rb").read().split(b"\0")
+samples = open("./data/train.bin", "rb").read().split(b"\0")
 
 samples = samples * 10
 

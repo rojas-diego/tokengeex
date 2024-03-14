@@ -60,7 +60,7 @@ def get_tokenizer(
         t = tokengeex.load(tokenizer)  # type: ignore
 
         def tokengeex_encode_many(snippets: List[str]) -> List[List[int]]:
-            return t.encode_many(snippets)
+            return [t.encode(snippet) for snippet in snippets]
 
         encode = tokengeex_encode_many
         vocab_size = t.vocab_size()

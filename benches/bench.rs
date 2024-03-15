@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use tokengeex::{vocab::ADVANCED_RE, Processor};
+use tokengeex::{Processor, ADVANCED_RE};
 
 fn load_samples() -> (Vec<String>, usize) {
     let data = std::fs::read("./data/train.bin").unwrap();
@@ -150,7 +150,7 @@ fn tokenizer_unigram(c: &mut Criterion) {
     group.bench_function("encode", |b| {
         b.iter(|| {
             for s in &samples {
-                tokenizer.encode(s);
+                tokenizer.encode(s).unwrap();
             }
         });
     });

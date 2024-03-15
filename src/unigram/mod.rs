@@ -3,7 +3,7 @@
 
 use crate::{
     utils::{lattice::Lattice, trie::Trie},
-    Model, ScoredToken, Token,
+    Error, Model, Result, ScoredToken, Token,
 };
 use std::collections::HashMap;
 
@@ -12,6 +12,40 @@ mod trainer;
 
 pub use serialization::Vocab;
 pub use trainer::*;
+
+#[derive(Copy, Clone)]
+pub enum UnigramError {
+    NoPath(usize, usize),
+    TokenIdOutOfBounds(u32),
+}
+
+impl std::fmt::Display for UnigramError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            UnigramError::NoPath(pos, len) => {
+                write!(f, "no path to position {}/{}", pos, len)
+            }
+            UnigramError::TokenIdOutOfBounds(id) => {
+                write!(f, "token id {} is out of bounds", id)
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for UnigramError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            UnigramError::NoPath(pos, len) => {
+                write!(f, "NoPath({}, {})", pos, len)
+            }
+            UnigramError::TokenIdOutOfBounds(id) => {
+                write!(f, "TokenIdOutOfBounds({})", id)
+            }
+        }
+    }
+}
+
+impl std::error::Error for UnigramError {}
 
 #[derive(Clone, Default)]
 /// Unigram is a tokenization model that uses a vocabulary of scored tokens to
@@ -45,6 +79,11 @@ impl Unigram {
         }
     }
 
+    /// Access the vocabulary of the model.
+    pub(super) fn vocab(&self) -> &Vec<ScoredToken> {
+        &self.vocab
+    }
+
     /// Populates a lattice with all the possible tokenizations of the input
     /// sentence.
     pub(super) fn populate_nodes(&self, lattice: &mut Lattice) {
@@ -65,17 +104,12 @@ impl Unigram {
             }
         }
     }
-
-    /// Access the vocabulary of the model.
-    pub fn vocab(&self) -> &Vec<ScoredToken> {
-        &self.vocab
-    }
 }
 
 impl Model for Unigram {
     /// Encode the input sequence into a sequence of token IDs in O(n) time
     /// using the SentencePiece DP algorithm.
-    fn encode(&self, input: &str) -> Vec<u32> {
+    fn encode(&self, input: &str) -> Result<Vec<u32>> {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = input.as_bytes();
 
@@ -134,15 +168,9 @@ impl Model for Unigram {
         while pos > 0 {
             let node = &dp[pos];
 
-            let start = node.start.unwrap_or_else(|| {
-                panic!(
-                    "encode: current node at pos {}/{} (id={}, score={}) has no start position",
-                    pos,
-                    input.len(),
-                    node.id,
-                    node.score,
-                )
-            });
+            let start = node
+                .start
+                .ok_or_else(|| Box::new(UnigramError::NoPath(pos, input.len())) as Error)?;
 
             ids.push(node.id);
             pos = start;
@@ -151,7 +179,7 @@ impl Model for Unigram {
         // Reverse to maintain original order since we built it backwards.
         ids.reverse();
 
-        ids
+        Ok(ids)
     }
 
     /// Decode the input sequence of token IDs into a string in O(n) time. If
@@ -160,16 +188,12 @@ impl Model for Unigram {
     /// # Panics
     ///
     /// This method will panic if any of the token IDs are out of bounds.
-    fn decode(&self, ids: &[u32]) -> String {
+    fn decode(&self, ids: &[u32]) -> Result<String> {
         let mut res = Vec::new();
 
         for &id in ids {
             if id >= self.vocab_size() as u32 {
-                panic!(
-                    "decode: token ID {} is out of bounds (vocab size is {})",
-                    id,
-                    self.vocab.len()
-                );
+                return Err(Box::new(UnigramError::TokenIdOutOfBounds(id)));
             }
 
             let (token, _) = &self.vocab[id as usize];
@@ -177,7 +201,7 @@ impl Model for Unigram {
             res.extend_from_slice(token);
         }
 
-        String::from_utf8_lossy(&res).into_owned()
+        Ok(String::from_utf8_lossy(&res).into_owned())
     }
 
     /// Convert a token to a token ID. Currently it is not possible to access
@@ -214,7 +238,7 @@ mod tests {
             .collect();
 
         let model = Unigram::from(vocab);
-        let ids = model.encode("abc");
+        let ids = model.encode("abc").unwrap();
         assert_eq!(ids, vec![3, 2]);
     }
 
@@ -224,9 +248,9 @@ mod tests {
         let model = Unigram::from(vocab);
         let input = "你好，我叫罗杰斯";
 
-        let ids = model.encode(input);
+        let ids = model.encode(input).unwrap();
         assert_eq!(ids.len(), input.len());
-        let decoded = model.decode(&ids);
+        let decoded = model.decode(&ids).unwrap();
         assert_eq!(decoded, input);
     }
 }

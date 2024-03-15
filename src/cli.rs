@@ -87,7 +87,7 @@ fn encode(input: Option<&str>, vocab: &str) {
 
     let tokenizer = tokengeex::load(vocab).unwrap();
 
-    let encoded = tokenizer.encode(&input);
+    let encoded = tokenizer.encode(&input).unwrap();
 
     let colors = vec![
         "\x1B[102m", // Bright Green background
@@ -116,12 +116,14 @@ fn decode(input: Option<&str>, vocab: &str) {
 
     let tokenizer = tokengeex::load(vocab).unwrap();
 
-    let decoded = tokenizer.decode(
-        &input
-            .split(',')
-            .map(|s| s.parse().unwrap())
-            .collect::<Vec<_>>(),
-    );
+    let decoded = tokenizer
+        .decode(
+            &input
+                .split(',')
+                .map(|s| s.parse().unwrap())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
 
     println!("{}", decoded);
 }
@@ -363,7 +365,9 @@ fn train(
             while should_continue {
                 log::info!("Epoch {} | Vocabulary size: {}", epoch, model.vocab_size());
 
-                should_continue = trainer.train(&mut model, &all_train_samples, &keep);
+                should_continue = trainer
+                    .train(&mut model, &all_train_samples, &keep)
+                    .unwrap();
 
                 evaluate("TRAIN", &train, &model);
                 evaluate("VALID", &valid, &model);
@@ -389,7 +393,7 @@ fn evaluate(split: &str, sources: &Vec<Source>, model: &unigram::Unigram) {
         let total_tokens = source
             .processed_samples
             .maybe_par_iter()
-            .map(|s| model.encode(s).len())
+            .map(|s| model.encode(s).unwrap().len())
             .sum::<usize>();
 
         log::info!(

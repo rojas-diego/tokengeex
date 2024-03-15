@@ -67,8 +67,10 @@ impl From<Vocab> for Vec<ScoredToken> {
     }
 }
 
+type StdResult<T, E> = std::result::Result<T, E>;
+
 impl Serialize for Unigram {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -83,7 +85,7 @@ impl Serialize for Unigram {
 }
 
 impl<'de> Deserialize<'de> for Unigram {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -100,7 +102,7 @@ impl<'de> Visitor<'de> for UnigramVisitor {
         formatter.write_str("struct Unigram")
     }
 
-    fn visit_map<V>(self, mut map: V) -> std::result::Result<Self::Value, V::Error>
+    fn visit_map<V>(self, mut map: V) -> StdResult<Self::Value, V::Error>
     where
         V: MapAccess<'de>,
     {

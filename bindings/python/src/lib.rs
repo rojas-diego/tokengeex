@@ -1,5 +1,8 @@
+use pyo3::create_exception;
 use pyo3::prelude::*;
 use pyo3::types::*;
+
+create_exception!(tokengeex, TokenGeeXError, pyo3::exceptions::PyException);
 
 #[pyclass(dict, module = "tokengeex", name = "Tokenizer")]
 #[derive(Clone)]
@@ -13,18 +16,34 @@ impl PyTokenizer {
     }
 }
 
+struct PyTokenGeeXError {
+    inner: tokengeex::Error,
+}
+
+impl From<tokengeex::Error> for PyTokenGeeXError {
+    fn from(e: tokengeex::Error) -> Self {
+        PyTokenGeeXError { inner: e }
+    }
+}
+
+impl From<PyTokenGeeXError> for PyErr {
+    fn from(e: PyTokenGeeXError) -> PyErr {
+        TokenGeeXError::new_err(e.inner.to_string())
+    }
+}
+
 #[pymethods]
 impl PyTokenizer {
     /// Encode a string to a list of token IDs.
     #[pyo3(text_signature = "(self, text)")]
-    fn encode(&self, text: &str) -> Vec<u32> {
-        self.tokenizer.encode(text)
+    fn encode(&self, text: &str) -> Result<Vec<u32>, PyTokenGeeXError> {
+        self.tokenizer.encode(text).map_err(|e| e.into())
     }
 
     /// Decode a list of token IDs to a string.
     #[pyo3(text_signature = "(self, ids)")]
-    fn decode(&self, ids: Vec<u32>) -> String {
-        self.tokenizer.decode(&ids)
+    fn decode(&self, ids: Vec<u32>) -> Result<String, PyTokenGeeXError> {
+        self.tokenizer.decode(&ids).map_err(|e| e.into())
     }
 
     fn token_to_id(&self, token: &str) -> Option<u32> {

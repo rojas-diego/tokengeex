@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::{ScoredToken, Unigram};
 use crate::{
     unigram::Vocab,
@@ -7,14 +5,9 @@ use crate::{
         lattice::Lattice,
         parallelism::{current_num_threads, MaybeParallelSlice},
     },
-    Model, Token,
+    Model, Result, Token,
 };
-use thiserror::Error;
-
-pub type Result<T> = std::result::Result<T, UnigramTrainerError>;
-
-#[derive(Debug, Error)]
-pub enum UnigramTrainerError {}
+use std::collections::HashSet;
 
 pub struct UnigramTrainer {
     vocab_size: usize,
@@ -33,7 +26,12 @@ impl UnigramTrainer {
 
     /// Train a Unigram model over a dataset of sentences using the initial
     /// specified initial vocabulary.
-    pub fn train(&mut self, model: &mut Unigram, samples: &[&str], keep: &HashSet<Token>) -> bool {
+    pub fn train(
+        &mut self,
+        model: &mut Unigram,
+        samples: &[&str],
+        keep: &HashSet<Token>,
+    ) -> Result<bool> {
         let desired_vocab_size: usize = (self.vocab_size * 11) / 10;
 
         for i in 0..self.num_sub_iterations {
@@ -64,13 +62,13 @@ impl UnigramTrainer {
             // Finally, adjusts the size of sentencepices to be |vocab_size|.
             *model = self.finalize(model);
 
-            return false;
+            Ok(false)
+        } else {
+            // Prunes pieces.
+            *model = Unigram::from(self.prune_vocab(model, model.vocab(), samples, keep)?);
+
+            Ok(true)
         }
-
-        // Prunes pieces.
-        *model = Unigram::from(self.prune_vocab(model, model.vocab(), samples, keep));
-
-        true
     }
 
     /// Runs the E-step of the EM algorithm for the Unigram model. It computes
@@ -190,7 +188,7 @@ impl UnigramTrainer {
         vocab: &[ScoredToken],
         samples: &[&str],
         keep: &HashSet<Token>,
-    ) -> Vec<ScoredToken> {
+    ) -> Result<Vec<ScoredToken>> {
         let bos_id = vocab.len() + 1;
         let eos_id = vocab.len() + 2;
 
@@ -233,17 +231,21 @@ impl UnigramTrainer {
                 let mut freq: Vec<usize> = vec![0; vocab.len()];
 
                 for sentence in chunk {
-                    for id in model.encode(sentence) {
+                    for id in model.encode(sentence)? {
                         freq[id as usize] += 1;
                     }
                 }
 
-                freq
+                Ok(freq)
             })
             .reduce(
-                || vec![0; vocab.len()],
-                |l, r| l.iter().zip(r).map(|(a, b)| a + b).collect(),
-            );
+                || Ok(vec![0; vocab.len()]),
+                |l: Result<Vec<usize>>, r: Result<Vec<usize>>| {
+                    let l = l?;
+                    let r = r?;
+                    Ok(l.iter().zip(r).map(|(a, b)| a + b).collect())
+                },
+            )?;
 
         let sum_token_frequencies = token_frequencies.iter().sum::<usize>() as f64;
         let logsum_token_frequencies = (sum_token_frequencies as f64).ln();
@@ -311,7 +313,7 @@ impl UnigramTrainer {
             pruned_vocab.push(vocab[id].clone());
         }
 
-        pruned_vocab.to_vec()
+        Ok(pruned_vocab.to_vec())
     }
 
     fn finalize(&self, model: &Unigram) -> Unigram {

@@ -28,31 +28,44 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct LoadError {
-    inner: Box<dyn std::error::Error>,
+    reason: String,
 }
 
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "failed to load tokenizer")
+        write!(f, "failed to load tokenizer: {}", self.reason)
     }
 }
 
-impl std::error::Error for LoadError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&*self.inner)
-    }
-}
+impl std::error::Error for LoadError {}
 
 impl From<LoadError> for Box<dyn std::error::Error + Send> {
-    fn from(e: LoadError) -> Box<dyn std::error::Error + Send> {
-        e.into()
+    fn from(e: LoadError) -> Self {
+        Box::new(e)
     }
 }
 
 /// Load a tokenizer from a file.
 pub fn load(file: &str) -> Result<Tokenizer> {
-    let file = std::fs::File::open(file).map_err(|e| LoadError { inner: Box::new(e) })?;
-    let tokenizer = serde_json::from_reader(file).map_err(|e| LoadError { inner: Box::new(e) })?;
+    let contents = std::fs::read_to_string(file).map_err(|e| LoadError {
+        reason: e.to_string(),
+    })?;
+    let tokenizer = serde_json::from_str(&contents).map_err(|e| LoadError {
+        reason: e.to_string(),
+    })?;
 
     Ok(tokenizer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load() {
+        let tokenizer = load("data/unigram-65k.json").unwrap();
+        assert_eq!(tokenizer.vocab_size(), 65536);
+
+        assert!(load("doesnotexist").is_err());
+    }
 }

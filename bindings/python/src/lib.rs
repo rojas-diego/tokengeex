@@ -86,8 +86,10 @@ impl PyTokenizer {
 
 #[pyfunction]
 #[pyo3(name = "load")]
-fn tokengeex_load_py(filename: &str) -> PyResult<PyTokenizer> {
-    Ok(PyTokenizer::from(tokengeex::load(filename).unwrap()))
+fn tokengeex_load_py(filename: &str) -> Result<PyTokenizer, PyTokenGeeXError> {
+    let tokenizer =
+        tokengeex::load(filename).map_err(std::convert::Into::<PyTokenGeeXError>::into)?;
+    Ok(PyTokenizer::from(tokenizer))
 }
 
 #[pymodule]

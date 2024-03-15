@@ -29,10 +29,11 @@ def benchmark_batch(documents: list[str]) -> None:
         f"TikToken     {bytes_to_mb(int(num_bytes / (end-start) * 1e9)):>5} MB/s {round((end - start) / 1e9, 2):>5}s ({'single thread' if num_threads < 2 else '{} threads'.format(num_threads)})"
     )
 
-    from transformers import GPT2TokenizerFast
+    from transformers import AutoTokenizer
 
-    hf_enc = GPT2TokenizerFast.from_pretrained("gpt2")
-    hf_enc.model_max_length = 1e30  # silence!
+    hf_enc = AutoTokenizer.from_pretrained("gpt2")
+
+    hf_enc.model_max_length = 1e30  # type: ignore
     hf_enc.encode("warmup")
     start = time.perf_counter_ns()
     hf_enc(documents)
@@ -43,7 +44,7 @@ def benchmark_batch(documents: list[str]) -> None:
 
     import tokengeex
 
-    tokenizer = tokengeex.load("./data/unigram-65k.json")  # type: ignore
+    tokenizer = tokengeex.load("./data/unigram-65k.json")
 
     start = time.perf_counter_ns()
     for doc in documents:

@@ -34,14 +34,10 @@ impl From<PyTokenGeeXError> for PyErr {
 
 #[pymethods]
 impl PyTokenizer {
-    /// Encode a string to a list of token IDs.
-    #[pyo3(text_signature = "(self, text)")]
     fn encode(&self, text: &str) -> Result<Vec<u32>, PyTokenGeeXError> {
         self.tokenizer.encode(text).map_err(|e| e.into())
     }
 
-    /// Decode a list of token IDs to a string.
-    #[pyo3(text_signature = "(self, ids)")]
     fn decode(&self, ids: Vec<u32>) -> Result<String, PyTokenGeeXError> {
         self.tokenizer.decode(&ids).map_err(|e| e.into())
     }
@@ -99,6 +95,7 @@ fn tokengeex_load_py(filename: &str) -> PyResult<PyTokenizer> {
 fn tokengeex_module(_: Python, m: &PyModule) -> PyResult<()> {
     // Module: TokenGeeX
     m.add_function(wrap_pyfunction!(tokengeex_load_py, m)?)?;
+    m.add_class::<PyTokenizer>()?;
 
     Ok(())
 }

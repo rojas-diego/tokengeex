@@ -22,7 +22,7 @@ required-features = ["cli"]
 
 [[bench]]
 name = "bench"
-path = "benches/bench.rs"
+path = "src/bench.rs"
 harness = false
 
 [dependencies]

@@ -80,13 +80,13 @@ impl Unigram {
     }
 
     /// Access the vocabulary of the model.
-    pub(super) fn vocab(&self) -> &Vec<ScoredToken> {
+    pub fn vocab(&self) -> &Vec<ScoredToken> {
         &self.vocab
     }
 
     /// Populates a lattice with all the possible tokenizations of the input
     /// sentence.
-    pub(super) fn populate_nodes(&self, lattice: &mut Lattice) {
+    pub fn populate_nodes(&self, lattice: &mut Lattice) {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = lattice.sentence;
 

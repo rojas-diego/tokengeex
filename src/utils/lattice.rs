@@ -55,15 +55,15 @@ impl Ord for Hypothesis {
 /// Structure to implement Viterbi algorithm to find the best encoding, or
 /// sample from all possible encodings of a given sentence.
 #[derive(Debug)]
-pub(crate) struct Lattice<'a> {
+pub struct Lattice<'a> {
     /// The sentence to be tokenized.
-    pub(crate) sentence: &'a [u8],
+    pub sentence: &'a [u8],
     /// An array which keeps track of all the tokens which begin at a given
     /// position in the sentence.
-    pub(crate) begin_nodes: Vec<Vec<NodeRef>>,
+    pub begin_nodes: Vec<Vec<NodeRef>>,
     /// An array which keeps track of all the tokens which end at a given
     /// position in the sentence.
-    pub(crate) end_nodes: Vec<Vec<NodeRef>>,
+    pub end_nodes: Vec<Vec<NodeRef>>,
 
     nodes: Vec<NodeRef>,
     len: usize,
@@ -92,17 +92,17 @@ impl std::fmt::Display for Lattice<'_> {
 
 /// A node from the lattice, that helps reconstruct the underlying `String`
 #[derive(Debug, Clone)]
-pub(crate) struct Node {
+pub struct Node {
     /// Token ID.
-    pub(crate) id: usize,
+    pub id: usize,
     /// ID of the node in the lattice.
-    pub(crate) node_id: usize,
+    pub node_id: usize,
     /// Position in the sentence.
-    pub(crate) pos: usize,
+    pub pos: usize,
     /// Length of the token.
-    pub(crate) length: usize,
+    pub length: usize,
     /// Previous node.
-    pub(crate) prev: Option<NodeRef>,
+    pub prev: Option<NodeRef>,
 
     backtrace_score: f64,
     score: f64,
@@ -115,7 +115,7 @@ impl PartialEq for Node {
 }
 
 impl Node {
-    pub(crate) fn new(id: usize, node_id: usize, pos: usize, length: usize, score: f64) -> Self {
+    pub fn new(id: usize, node_id: usize, pos: usize, length: usize, score: f64) -> Self {
         Self {
             id,
             node_id,
@@ -143,13 +143,11 @@ fn log_sum_exp(x: f64, y: f64, init_mode: bool) -> f64 {
 }
 
 impl<'a> Lattice<'a> {
-    #[allow(unused)]
-    pub(crate) fn from(sentence: &'a [u8], bos_id: usize, eos_id: usize) -> Self {
+    pub fn from(sentence: &'a [u8], bos_id: usize, eos_id: usize) -> Self {
         let len = sentence.len();
 
         let k_reserved_node_size = 16;
 
-        // We are adding 2 tokens, bos and eos
         let mut nodes: Vec<NodeRef> = Vec::with_capacity(k_reserved_node_size);
         let mut begin_nodes = vec![Vec::with_capacity(k_reserved_node_size); len + 1];
         let mut end_nodes = vec![Vec::with_capacity(k_reserved_node_size); len + 1];
@@ -172,7 +170,7 @@ impl<'a> Lattice<'a> {
         }
     }
 
-    pub(crate) fn insert(&mut self, pos: usize, length: usize, score: f64, id: usize) {
+    pub fn insert(&mut self, pos: usize, length: usize, score: f64, id: usize) {
         let node_id = self.nodes.len();
         let node = Rc::new(RefCell::new(Node::new(id, node_id, pos, length, score)));
 
@@ -182,7 +180,7 @@ impl<'a> Lattice<'a> {
         self.nodes.push(node);
     }
 
-    pub(crate) fn viterbi(&mut self) -> Vec<NodeRef> {
+    pub fn viterbi(&mut self) -> Vec<NodeRef> {
         let len = self.len;
         let mut pos = 0;
         while pos <= len {
@@ -232,11 +230,11 @@ impl<'a> Lattice<'a> {
         results
     }
 
-    pub(crate) fn piece(&self, node: &Node) -> String {
+    pub fn piece(&self, node: &Node) -> String {
         String::from_utf8_lossy(&self.sentence[node.pos..node.pos + node.length]).to_string()
     }
 
-    pub(crate) fn nbest(&mut self, n: usize) -> Vec<Vec<NodeRef>> {
+    pub fn nbest(&mut self, n: usize) -> Vec<Vec<NodeRef>> {
         match n {
             0 => vec![],
             1 => vec![self.viterbi()],
@@ -296,15 +294,15 @@ impl<'a> Lattice<'a> {
         }
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.len
     }
 
-    pub(crate) fn bos_node(&self) -> NodeRef {
+    pub fn bos_node(&self) -> NodeRef {
         Rc::clone(&self.end_nodes[0][0])
     }
 
-    pub(crate) fn eos_node(&self) -> NodeRef {
+    pub fn eos_node(&self) -> NodeRef {
         Rc::clone(&self.begin_nodes[self.len][0])
     }
 
@@ -313,7 +311,7 @@ impl<'a> Lattice<'a> {
     /// sentence. Returns the normalisation constant which is the probability
     /// of reaching the end of the sentence from the beginning which in itself
     /// corresponds to the probability of the sentence.
-    pub(crate) fn populate_marginal(&self, expected: &mut [f64]) -> f64 {
+    pub fn populate_marginal(&self, expected: &mut [f64]) -> f64 {
         let len = self.len();
         let n_nodes = self.nodes.len();
 

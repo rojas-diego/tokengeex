@@ -153,6 +153,10 @@ impl Tokenizer {
         std::fs::write(filepath, contents)?;
         Ok(())
     }
+
+    pub fn model(&self) -> ModelWrapper {
+        self.model.clone()
+    }
 }
 
 struct SpecialTokenSplitter<'a> {

@@ -175,7 +175,7 @@ impl UnigramTrainer {
                 continue;
             }
 
-            alternative_vocab.push((token.clone(), f64::max(*freq, EXPECTED_FREQUENCY_THRESHOLD)));
+            alternative_vocab.push((*token, f64::max(*freq, EXPECTED_FREQUENCY_THRESHOLD)));
         }
 
         // I have no clue what's going here. A previous comment pointed to this
@@ -191,7 +191,7 @@ impl UnigramTrainer {
         // Ensure the vocabulary does not contain f64::NaN.
         for (i, freq) in scores.iter().enumerate() {
             if freq.is_nan() || freq.is_infinite() {
-                let token = alternative_vocab[i].0.clone();
+                let token = alternative_vocab[i].0;
                 let freq = alternative_vocab[i].1;
 
                 // Write the alternative vocabulary to a file for debugging.
@@ -300,7 +300,7 @@ impl UnigramTrainer {
         // alternatives[i] if removed.
         for (id, (token, score)) in vocab.iter().enumerate() {
             if keep.contains(token) {
-                pruned_vocab.push((token.clone(), *score));
+                pruned_vocab.push((*token, *score));
                 continue;
             }
 
@@ -309,7 +309,7 @@ impl UnigramTrainer {
                 continue;
             } else if alternatives[id].is_empty() {
                 // No alternatives. Keeps this entry.
-                pruned_vocab.push((token.clone(), *score));
+                pruned_vocab.push((*token, *score));
             } else if token_frequencies[id] != 0 {
                 let freq = token_frequencies[id] as f64;
                 let logprob = freq.ln() - logsum_token_frequencies;
@@ -350,7 +350,7 @@ impl UnigramTrainer {
             if pruned_vocab.len() == pruned_size {
                 break;
             }
-            pruned_vocab.push(vocab[id].clone());
+            pruned_vocab.push(vocab[id]);
         }
 
         Ok(pruned_vocab.to_vec())
@@ -360,7 +360,7 @@ impl UnigramTrainer {
         let mut vocab: Vec<ScoredToken> = vec![];
 
         for (token, score) in model.vocab() {
-            vocab.push((token.clone(), if !score.is_normal() { 0.0 } else { *score }));
+            vocab.push((*token, if !score.is_normal() { 0.0 } else { *score }));
 
             if vocab.len() >= self.vocab_size {
                 break;

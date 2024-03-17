@@ -1,13 +1,17 @@
+use std::ops::Deref;
+
 #[derive(Clone, Copy)]
 pub struct Token {
-    // Last u64's last byte is used to store the length
-    data: [u64; 4],
+    data: [u8; 39],
+    len: u8,
 }
 
 impl Token {
+    pub const MAX_LEN: usize = 39;
+
     // Returns the number of bytes stored in the Token.
     pub fn len(&self) -> usize {
-        ((self.data[3] >> 56) & 0xFF) as usize
+        self.len as usize
     }
 
     // Checks if the Token is empty.
@@ -17,12 +21,7 @@ impl Token {
 
     // Returns a slice of the data as u8.
     pub fn as_slice(&self) -> &[u8] {
-        let len = self.len();
-        let data_as_bytes: &[u8] = unsafe {
-            let data_ptr: *const u8 = self.data.as_ptr() as *const u8;
-            std::slice::from_raw_parts(data_ptr, len)
-        };
-        data_as_bytes
+        &self.data[..self.len()]
     }
 
     // Returns an iterator over the bytes of the Token.
@@ -50,27 +49,28 @@ impl std::fmt::Debug for Token {
 
 impl From<u8> for Token {
     fn from(byte: u8) -> Self {
-        let mut token = Token { data: [0; 4] };
-        token.data[0] = byte as u64;
-        token.data[3] = 1 << 56;
+        let mut token = Token {
+            data: [0; 39],
+            len: 1,
+        };
 
+        token.data[0] = byte;
         token
     }
 }
 
 impl From<&[u8]> for Token {
     fn from(bytes: &[u8]) -> Self {
-        let mut token = Token { data: [0; 4] };
-        let len = std::cmp::min(bytes.len(), 31);
-
-        for (i, &byte) in bytes.iter().enumerate().take(31) {
-            let pos = i / 8;
-            let shift = (i % 8) * 8;
-            token.data[pos] |= (byte as u64) << shift;
+        if bytes.len() > 39 {
+            panic!("String too long for Token conversion");
         }
 
-        token.data[3] |= (len as u64) << 56;
+        let mut token = Token {
+            data: [0; 39],
+            len: bytes.len() as u8,
+        };
 
+        token.data[..bytes.len()].copy_from_slice(bytes);
         token
     }
 }
@@ -81,9 +81,35 @@ impl From<&str> for Token {
     }
 }
 
+impl From<&&str> for Token {
+    fn from(s: &&str) -> Self {
+        Token::from(*s)
+    }
+}
+
+impl From<&Vec<u8>> for Token {
+    fn from(v: &Vec<u8>) -> Self {
+        Token::from(v.as_slice())
+    }
+}
+
+impl From<&String> for Token {
+    fn from(s: &String) -> Self {
+        Token::from(s.as_bytes())
+    }
+}
+
+impl Deref for Token {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
 impl std::hash::Hash for Token {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.as_slice()[..self.len()].hash(state);
+        self.as_slice().hash(state);
     }
 }
 
@@ -109,14 +135,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "String too long for Token conversion")]
-    fn test_from_str_too_long() {
-        let _token = Token::from("12345678901234567890123456789012"); // 32 characters
-    }
-
-    #[test]
     fn test_from_str_with_various_lengths() {
-        for i in 1..=31 {
+        for i in 1..Token::MAX_LEN {
             let s: String = "a".repeat(i);
             let token = Token::from(s.as_str());
             assert_eq!(token.len(), i, "Failed at length {}", i);

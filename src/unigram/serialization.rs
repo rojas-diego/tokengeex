@@ -27,9 +27,9 @@ impl From<Vec<ScoredToken>> for Vocab {
 
         for (token, score) in vocab {
             let mut encoded = None;
-            let value = String::from_utf8(token.clone()).unwrap_or_else(|_| {
+            let value = String::from_utf8(token.to_vec()).unwrap_or_else(|_| {
                 encoded = Some(true);
-                BASE64_STANDARD.encode(token)
+                BASE64_STANDARD.encode(token.as_slice())
             });
 
             serialized_vocab.push(SerializedScoredToken {
@@ -60,7 +60,7 @@ impl From<Vocab> for Vec<ScoredToken> {
                         value.as_bytes().to_vec()
                     };
 
-                    (token, score)
+                    (token[..].into(), score)
                 },
             )
             .collect()
@@ -148,7 +148,7 @@ mod tests {
     fn test_serialize_unigram() {
         let vocab = [("a", 1.0), ("b", 2.0), ("c", 3.0)]
             .iter()
-            .map(|(s, f)| (s.as_bytes().to_vec(), *f))
+            .map(|(s, f)| (s.into(), *f))
             .collect();
 
         let model = Unigram::from(vocab);
@@ -163,11 +163,11 @@ mod tests {
     fn test_serialize_unigram_base64() {
         let vocab = [("a", 1.0), ("b", 2.0), ("c", 3.0)]
             .iter()
-            .map(|(s, f)| (s.as_bytes().to_vec(), *f))
+            .map(|(s, f)| (s.into(), *f))
             .collect();
 
         let mut model = Unigram::from(vocab);
-        model.vocab.push((vec![0x80], 4.0));
+        model.vocab.push((0x80.into(), 4.0));
 
         let serialized = serde_json::to_string(&model).unwrap();
         let deserialized: Unigram = serde_json::from_str(&serialized).unwrap();
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_serialize_deszerialize_invariants() {
-        let vocab = (0..255_u8).map(|b| (vec![b], 1.0)).collect::<Vec<_>>();
+        let vocab = (0..255_u8).map(|b| (b.into(), 1.0)).collect::<Vec<_>>();
         let model = Unigram::from(vocab);
 
         let serialized = serde_json::to_string(&model).unwrap();

@@ -48,7 +48,7 @@ fn load_many_processed_samples(
 }
 
 fn lattice(c: &mut Criterion) {
-    let (samples, bytes) = load_many_processed_samples(
+    let (mut samples, bytes) = load_many_processed_samples(
         &[
             Box::new(tokengeex::CapcodeProcessor),
             Box::new(tokengeex::CrlfProcessor),
@@ -96,6 +96,35 @@ fn lattice(c: &mut Criterion) {
                         &mut pool,
                     );
                     model.populate_nodes(&mut lattice);
+                }
+            });
+        });
+    });
+
+    samples.truncate(1000);
+    let bytes = samples.iter().map(|s| s.len()).sum::<usize>();
+
+    group.throughput(Throughput::Bytes(bytes as u64));
+    group.bench_function("from_populate_nodes_marginal_multithreaded", |b| {
+        b.iter(|| {
+            let chunk_size = std::cmp::max(1, samples.len() / rayon::current_num_threads());
+
+            samples.par_chunks(chunk_size).for_each(|chunk| {
+                let mut lattice = Lattice::default();
+                let mut pool = VecPool::with_capacity(1024 * 128, 16);
+                let mut frequencies = vec![0.0; model.vocab_size()];
+
+                for sample in chunk {
+                    lattice.from(
+                        sample.as_bytes(),
+                        (model.vocab_size()) as TokenID,
+                        (model.vocab_size() + 1) as TokenID,
+                        &mut pool,
+                    );
+
+                    model.populate_nodes(&mut lattice);
+
+                    lattice.populate_marginal(&mut frequencies);
                 }
             });
         });

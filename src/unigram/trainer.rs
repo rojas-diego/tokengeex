@@ -94,22 +94,25 @@ impl UnigramTrainer {
                 // efficiency.
                 let mut lattice = Lattice::default();
 
-                // let tid = std::thread::current().id();
+                // Get thread ID as a u64.
+                let tid = unsafe {
+                    std::mem::transmute::<std::thread::ThreadId, u64>(std::thread::current().id())
+                };
 
                 // For each sample, we iterate over snippets of max
                 // `MAX_SAMPLE_LENGTH` bytes.
-                // This is because populate_marginal scales poorly with respect
-                // to sample length.
                 const MAX_SAMPLE_LENGTH: usize = 8192;
 
-                for &sample in chunk {
+                let start = std::time::Instant::now();
+                let mut last_status_report = std::time::Instant::now();
+                let mut processed_bytes = 0;
+
+                for (i, &sample) in chunk.iter().enumerate() {
                     debug_assert!(!sample.is_empty(), "empty sample");
 
                     // We iterate over chunks of the sample to avoid allocating
                     // a new lattice for each sample.
                     for snippet in sample.as_bytes().chunks(MAX_SAMPLE_LENGTH) {
-                        // let start = std::time::Instant::now();
-
                         lattice.from(
                             snippet,
                             (model.vocab.len() + 1) as TokenID,
@@ -117,8 +120,6 @@ impl UnigramTrainer {
                             &mut pool,
                         );
                         model.populate_nodes(&mut lattice);
-
-                        // let middle = std::time::Instant::now();
 
                         let z = lattice.populate_marginal(&mut expected_frequencies);
                         if !z.is_normal() {
@@ -128,16 +129,20 @@ impl UnigramTrainer {
                                 sample.len()
                             );
                         }
+                    }
 
-                        // let end = std::time::Instant::now();
+                    processed_bytes += sample.len();
 
-                        // log::info!(
-                        //     "E-step: Sample tid={:?} len={} nodes={}ms marginal={}ms",
-                        //     tid,
-                        //     snippet.len(),
-                        //     middle.duration_since(start).as_millis(),
-                        //     end.duration_since(middle).as_millis(),
-                        // );
+                    if last_status_report.elapsed().as_secs() >= 5 {
+                        log::debug!(
+                            "Worker {} | {:>6}/{} samples | {:.3}MB/s",
+                            tid,
+                            i,
+                            chunk.len(),
+                            (processed_bytes as f64 / 1024.0 / 1024.0)
+                                / start.elapsed().as_secs_f64()
+                        );
+                        last_status_report = std::time::Instant::now();
                     }
                 }
 

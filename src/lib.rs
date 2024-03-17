@@ -2,23 +2,26 @@ pub mod unigram;
 
 mod model;
 mod processor;
-mod token;
 mod tokenizer;
 mod utils;
 mod vocab;
 
 pub use model::*;
 pub use processor::*;
-pub use token::*;
 pub use tokenizer::*;
 pub use utils::*;
 pub use vocab::*;
 
 /// The maximum length of a token in bytes.
-pub const MAX_TOKEN_LENGTH: usize = 39;
+pub const MAX_TOKEN_LENGTH: usize = 63;
 
 /// A numerical ID for a token. Cannot be larger than `u32::MAX`.
 pub type TokenID = u32;
+
+/// An arbitrary sequence of bytes. Almost always valid UTF-8 but not
+/// guaranteed.
+/// Never longer than `MAX_TOKEN_LENGTH`.
+pub type Token = Vec<u8>;
 
 /// A token and its score.
 pub type ScoredToken = (Token, f64);

@@ -127,8 +127,8 @@ impl VocabularyGenerator {
         let highest_freq = frequent_tokens.first().map(|(_, freq)| *freq).unwrap_or(1);
         let mut vocab: Vec<ScoredToken> = (0..255_u8)
             .map(|b| {
-                keep.insert(b.into());
-                (b.into(), highest_freq as f64)
+                keep.insert(vec![b]);
+                (vec![b], highest_freq as f64)
             })
             .collect();
 
@@ -136,9 +136,9 @@ impl VocabularyGenerator {
         for (i, token) in added_tokens.iter().enumerate() {
             if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token);
-                keep.insert(token.into());
+                keep.insert(token.as_bytes().to_vec());
                 vocab.push((
-                    token.into(),
+                    token.as_bytes().to_vec(),
                     (added_tokens_freq[i] as f64) * (token.len() as f64),
                 ));
             }
@@ -149,7 +149,7 @@ impl VocabularyGenerator {
             if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token);
                 vocab.push((
-                    token.into(),
+                    token.as_bytes().to_vec(),
                     (suggested_tokens_freq[i] as f64) * (token.len() as f64),
                 ));
             }
@@ -163,7 +163,7 @@ impl VocabularyGenerator {
 
             if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token.as_str());
-                vocab.push((token.into(), (freq * token.len()) as f64));
+                vocab.push((token.as_bytes().to_vec(), (freq * token.len()) as f64));
             }
         }
 

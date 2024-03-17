@@ -68,7 +68,7 @@ impl Unigram {
         let mut trie = Trie::default();
 
         for (id, (token, _)) in vocab.iter().enumerate() {
-            token_to_ids.insert(*token, id as u32);
+            token_to_ids.insert(token.clone(), id as u32);
             trie.push(token, (id as u32, token.len() as u32));
         }
 
@@ -207,7 +207,7 @@ impl Model for Unigram {
     /// Convert a token to a token ID. Currently it is not possible to access
     /// tokens that are invalid UTF-8 through this method.
     fn token_to_id(&self, token: &str) -> Option<u32> {
-        self.token_to_ids.get(&token.into()).copied()
+        self.token_to_ids.get(token.as_bytes()).copied()
     }
 
     /// Convert a token ID to a token. If the byte sequence is not valid UTF-8
@@ -234,7 +234,7 @@ mod tests {
     fn test_encode() {
         let vocab = [("a", 1.0), ("b", 2.0), ("c", 3.0), ("ab", 4.0)]
             .iter()
-            .map(|(s, f)| (s.into(), *f))
+            .map(|(s, f)| (s.as_bytes().to_vec(), *f))
             .collect();
 
         let model = Unigram::from(vocab);
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_decode_encode_invariants() {
-        let vocab = (0..255_u8).map(|b| (b.into(), 1.0)).collect();
+        let vocab = (0..255_u8).map(|b| (vec![b], 1.0)).collect();
         let model = Unigram::from(vocab);
         let input = "你好，我叫罗杰斯";
 

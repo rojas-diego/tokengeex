@@ -1,11 +1,12 @@
 use super::{ScoredToken, Unigram};
 use crate::{
+    lattice::VecPool,
     unigram::Vocab,
     utils::{
         lattice::Lattice,
         parallelism::{current_num_threads, MaybeParallelSlice},
     },
-    Model, Result, Token,
+    Model, Result, Token, TokenID, MAX_TOKEN_LENGTH,
 };
 use std::collections::HashSet;
 
@@ -86,15 +87,22 @@ impl UnigramTrainer {
                 // on the probability of the token being part of optimal splits
                 // (its marginal probability).
                 let mut expected_frequencies: Vec<f64> = vec![0.0; model.vocab_size()];
+                // Keep a pool of vectors to reduce the number of allocations
+                // that the Lattice makes.
+                let mut pool = VecPool::with_capacity(1024 * 1024, 16);
+                // Re-use the same lattice for all the samples in the chunk for
+                // efficiency.
+                let mut lattice = Lattice::default();
 
                 for &sample in chunk {
                     debug_assert!(!sample.is_empty(), "empty sample");
 
                     // Compute all the possible segmentations of the sample.
-                    let mut lattice = Lattice::from(
+                    lattice.from(
                         sample.as_bytes(),
-                        model.vocab.len() + 1,
-                        model.vocab.len() + 2,
+                        (model.vocab.len() + 1) as TokenID,
+                        (model.vocab.len() + 2) as TokenID,
+                        &mut pool,
                     );
                     model.populate_nodes(&mut lattice);
 
@@ -189,15 +197,17 @@ impl UnigramTrainer {
         samples: &[&str],
         keep: &HashSet<Token>,
     ) -> Result<Vec<ScoredToken>> {
-        let bos_id = vocab.len() + 1;
-        let eos_id = vocab.len() + 2;
+        let bos_id = (vocab.len() + 1) as TokenID;
+        let eos_id = (vocab.len() + 2) as TokenID;
 
         // Segment each token in the vocabulary to understand how it would be
         // resegmented if it was removed from the vocabulary.
         let mut has_alternative = vec![true; vocab.len()];
-        let mut alternatives: Vec<Vec<usize>> = vec![Vec::new(); vocab.len()];
+        let mut alternatives: Vec<Vec<TokenID>> = vec![Vec::new(); vocab.len()];
+        let mut lattice = Lattice::default();
+        let mut pool = VecPool::with_capacity(MAX_TOKEN_LENGTH, 16);
         for (id, (token, _)) in vocab.iter().enumerate() {
-            let mut lattice = Lattice::from(token, bos_id, eos_id);
+            lattice.from(token, bos_id, eos_id, &mut pool);
             model.populate_nodes(&mut lattice);
 
             // The second best path is the alternative to the best path. The
@@ -214,7 +224,7 @@ impl UnigramTrainer {
             } else if nbests[0].len() == 1 {
                 has_alternative[id] = true;
                 for node in &nbests[1] {
-                    let alt_id = node.borrow().id;
+                    let alt_id = node.token_id;
                     alternatives[id].push(alt_id);
                 }
             }
@@ -284,7 +294,7 @@ impl UnigramTrainer {
                 let mut logprob_alternative = 0.0;
                 for n in &alternatives[id] {
                     logprob_alternative +=
-                        ((token_frequencies[*n] as f64) + freq).ln() - logsum_alternative;
+                        ((token_frequencies[*n as usize] as f64) + freq).ln() - logsum_alternative;
                 }
 
                 // The difference in likelihood after removing the token.

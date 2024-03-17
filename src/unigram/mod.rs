@@ -3,7 +3,7 @@
 
 use crate::{
     utils::{lattice::Lattice, trie::Trie},
-    Error, Model, Result, ScoredToken, Token,
+    Error, Model, Result, ScoredToken, Token, TokenID,
 };
 use std::collections::HashMap;
 
@@ -58,7 +58,7 @@ impl std::error::Error for UnigramError {}
 pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<Token, u32>,
-    trie: Trie<(u32, u32)>,
+    trie: Trie<(TokenID, u32)>,
 }
 
 impl Unigram {
@@ -100,7 +100,7 @@ impl Unigram {
             {
                 let score = &self.vocab[id as usize].1;
 
-                lattice.insert(pos, len as usize, *score, id as usize);
+                lattice.insert(pos, id, len as usize, *score);
             }
         }
     }

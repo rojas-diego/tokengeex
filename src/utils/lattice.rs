@@ -6,21 +6,340 @@ use std::cmp::{min, Ordering};
 use std::collections::BinaryHeap;
 use std::rc::Rc;
 
-type NodeRef = Rc<RefCell<Node>>;
+use crate::TokenID;
+
+/// Structure to implement Viterbi algorithm to find the best encoding, or
+/// sample from all possible encodings of a given sentence.
+#[derive(Debug)]
+pub struct Lattice<'a> {
+    /// The sentence to be tokenized.
+    pub sentence: &'a [u8],
+    /// An array which keeps track of all the tokens which begin at a given
+    /// position in the sentence.
+    pub begin_nodes: Vec<Vec<usize>>,
+    /// An array which keeps track of all the tokens which end at a given
+    /// position in the sentence.
+    pub end_nodes: Vec<Vec<usize>>,
+    /// Each node represents a token in the sentence.
+    pub nodes: Vec<Node>,
+
+    bos_idx: usize,
+    eos_idx: usize,
+}
+
+/// A node from the lattice, that helps reconstruct the underlying `String`
+#[derive(Debug, Clone)]
+pub struct Node {
+    /// Position in the sentence.
+    pub pos: usize,
+    /// Token ID.
+    pub token_id: TokenID,
+    /// Length of the token.
+    pub token_len: usize,
+    /// Score of the token.
+    pub score: f64,
+    /// Previous node.
+    pub prev: Option<usize>,
+    /// Score obtained from backtracking.
+    pub backtrack_score: f64,
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Node) -> bool {
+        self.token_id == other.token_id
+    }
+}
+
+impl Node {
+    pub fn new(pos: usize, token_id: TokenID, token_len: usize, score: f64) -> Self {
+        Self {
+            pos,
+            token_id,
+            token_len,
+            score,
+            prev: None,
+            backtrack_score: 0.0,
+        }
+    }
+}
+
+impl<'a> Lattice<'a> {
+    pub fn new() -> Self {
+        Self {
+            sentence: &[],
+            nodes: Vec::with_capacity(1024 * 1024),
+            begin_nodes: vec![],
+            end_nodes: vec![],
+            bos_idx: 0,
+            eos_idx: 0,
+        }
+    }
+
+    pub fn from(
+        &mut self,
+        sentence: &'a [u8],
+        bos_id: TokenID,
+        eos_id: TokenID,
+        vec_pool: &mut VecPool,
+    ) {
+        self.sentence = sentence;
+        self.nodes.clear();
+
+        // Return existing Vecs to the pool and borrow new ones as needed.
+        for vec in self.begin_nodes.drain(..) {
+            vec_pool.put(vec);
+        }
+        for vec in self.end_nodes.drain(..) {
+            vec_pool.put(vec);
+        }
+
+        self.begin_nodes
+            .resize_with(sentence.len() + 1, || vec_pool.get());
+        self.end_nodes
+            .resize_with(sentence.len() + 1, || vec_pool.get());
+
+        // Reinitialize with BOS and EOS nodes.
+        self.nodes.push(Node::new(0, bos_id, 0, 0.0));
+        self.bos_idx = 0;
+        self.nodes.push(Node::new(sentence.len(), eos_id, 0, 0.0));
+        self.eos_idx = 1;
+        self.end_nodes[0].push(self.bos_idx);
+        self.begin_nodes[sentence.len()].push(self.eos_idx);
+    }
+
+    pub fn insert(&mut self, pos: usize, token_id: TokenID, token_len: usize, score: f64) {
+        let node_idx = self.nodes.len();
+        self.begin_nodes[pos].push(node_idx);
+        self.end_nodes[pos + token_len].push(node_idx);
+        self.nodes.push(Node::new(pos, token_id, token_len, score));
+    }
+
+    pub fn viterbi(&mut self) -> Vec<Node> {
+        let sentence_len = self.sentence.len();
+
+        for pos in 0..=sentence_len {
+            for &rnode_idx in &self.begin_nodes[pos] {
+                self.nodes[rnode_idx].prev = None;
+
+                let mut best_score = 0.0;
+                let mut best_node = None;
+
+                for &lnode_idx in &self.end_nodes[pos] {
+                    let score = self.nodes[lnode_idx].backtrack_score + self.nodes[rnode_idx].score;
+
+                    if best_node.is_none() || score > best_score {
+                        best_node = Some(lnode_idx);
+                        best_score = score;
+                    }
+                }
+
+                if best_node.is_none() {
+                    return vec![];
+                }
+
+                self.nodes[rnode_idx].prev = best_node;
+                self.nodes[rnode_idx].backtrack_score = best_score;
+            }
+        }
+
+        let mut results = Vec::with_capacity(sentence_len / 4);
+        let mut node_idx = self.begin_nodes[sentence_len][0];
+        while let Some(prev_node_idx) = self.nodes[node_idx].prev {
+            results.push(self.nodes[prev_node_idx].clone());
+            node_idx = prev_node_idx;
+        }
+
+        results.reverse();
+        results
+    }
+
+    pub fn nbest(&mut self, n: usize) -> Vec<Vec<Node>> {
+        match n {
+            0 => vec![],
+            1 => vec![self.viterbi()],
+            _ => {
+                let mut agenda: Agenda = BinaryHeap::new();
+                let mut hypotheses: Vec<Vec<usize>> = vec![];
+
+                let eos_id = 1;
+                let score = self.nodes[eos_id].score;
+
+                let hypo = Hypothesis::new(eos_id, None, score, score);
+                agenda.push(hypo);
+
+                self.viterbi();
+
+                while !agenda.is_empty() {
+                    let top = Rc::new(RefCell::new(agenda.pop().unwrap()));
+                    let node_idx = top.borrow().node_idx;
+                    let node_id = self.nodes[node_idx].token_id;
+                    let bos_node_id = self.nodes[self.bos_idx].token_id;
+                    let node_pos = self.nodes[node_idx].pos;
+
+                    if node_id == bos_node_id {
+                        let mut hypothesis = vec![];
+                        let mut next: HypothesisRef =
+                            Rc::clone(top.borrow().next.as_ref().unwrap());
+
+                        while next.borrow().next.is_some() {
+                            hypothesis.push(next.borrow().node_idx);
+
+                            let c: HypothesisRef = next.clone();
+
+                            next = Rc::clone(c.borrow().next.as_ref().unwrap());
+                        }
+
+                        hypotheses.push(hypothesis);
+
+                        if hypotheses.len() == n {
+                            return hypotheses
+                                .iter()
+                                .map(|indices| {
+                                    indices.iter().map(|&i| self.nodes[i].clone()).collect()
+                                })
+                                .collect();
+                        }
+                    } else {
+                        for &lnode in &self.end_nodes[node_pos] {
+                            let top_gx = top.borrow().gx;
+                            let fx = self.nodes[lnode].backtrack_score + top_gx;
+                            let gx = self.nodes[lnode].score + top_gx;
+                            let hyp = Hypothesis::new(lnode, Some(Rc::clone(&top)), fx, gx);
+                            agenda.push(hyp);
+                        }
+                        // When the input is too long or contains duplicated phrases,
+                        // `agenda` will get extremely big. Here we avoid this case by
+                        // dynamically shrinking the agenda.
+                        let k_max_agenda_size = 100_000;
+                        let k_min_agenda_size = 512;
+                        if agenda.len() > k_max_agenda_size {
+                            let mut new_agenda = BinaryHeap::new();
+                            let len = min(k_min_agenda_size, n * 10);
+                            for _i in 0..len {
+                                new_agenda.push(agenda.pop().unwrap());
+                            }
+                            agenda = new_agenda;
+                        }
+                    }
+                }
+
+                hypotheses
+                    .iter()
+                    .map(|indices| indices.iter().map(|&i| self.nodes[i].clone()).collect())
+                    .collect()
+            }
+        }
+    }
+
+    /// Computes the marginal probability for each node (token) which is the
+    /// probability of this token being part of the optimal segmentation of the
+    /// sentence. Returns the normalisation constant which is the probability
+    /// of reaching the end of the sentence from the beginning which in itself
+    /// corresponds to the probability of the sentence.
+    pub fn populate_marginal(&self, expected: &mut [f64]) -> f64 {
+        let len = self.sentence.len();
+        let num_nodes = self.nodes.len();
+
+        // Initialize alpha (forward probabilities) and beta (backward
+        // probabilities) vectors. They measure the log probabilities of
+        // reaching a particular node (token) from the start (alpha) or end
+        // (beta) of the lattice.
+        // - alpha[i] is the log probability of reaching node i from the bos
+        // - beta[i] is the log probability of reaching the eos from node i
+        let mut alpha = vec![0.0; num_nodes];
+        let mut beta = vec![0.0; num_nodes];
+
+        // Calculate forward probabilities (alpha)
+        for pos in 0..=len {
+            for &rid in &self.begin_nodes[pos] {
+                for &lid in &self.end_nodes[pos] {
+                    // Update alpha for the right node with log-sum-exp to
+                    // prevent underflow, adding the score from the left node
+                    // and its alpha
+                    alpha[rid] = log_sum_exp(
+                        alpha[rid],
+                        self.nodes[lid].score + alpha[lid],
+                        lid == self.end_nodes[pos][0],
+                    );
+                }
+            }
+        }
+
+        // Calculate backward probabilities (beta)
+        for pos in (0..=len).rev() {
+            for &lid in &self.end_nodes[pos] {
+                for &rid in &self.begin_nodes[pos] {
+                    // Update beta for the left node similarly, ensuring total
+                    // path probability is accumulated
+                    beta[lid] = log_sum_exp(
+                        beta[lid],
+                        self.nodes[rid].score + beta[rid],
+                        rid == self.begin_nodes[pos][0],
+                    );
+                }
+            }
+        }
+
+        // Calculate the normalization constant (z) from the EOS node's alpha
+        let eos_idx = self.eos_idx;
+        let z = alpha[eos_idx];
+
+        // Update the expected frequencies for each node based on its marginal
+        // probability
+        for pos in 0..len {
+            for &node_idx in &self.begin_nodes[pos] {
+                let id = self.nodes[node_idx].token_id;
+                let score = self.nodes[node_idx].score;
+                let a = alpha[node_idx];
+                let b = beta[node_idx];
+
+                // Calculate the total path probability through this node,
+                // subtract the normalization constant and update expected
+                // frequencies.
+                let total = a + score + b - z;
+                let update = total.exp();
+                expected[id as usize] += update;
+            }
+        }
+
+        z
+    }
+}
+
+impl<'a> Default for Lattice<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn log_sum_exp(x: f64, y: f64, init_mode: bool) -> f64 {
+    if init_mode {
+        y
+    } else {
+        let (vmin, vmax) = if x > y { (y, x) } else { (x, y) };
+        let k_minus_log_epsilon = 50.0;
+        if vmax > vmin + k_minus_log_epsilon {
+            vmax
+        } else {
+            vmax + ((vmin - vmax).exp() + 1.0).ln()
+        }
+    }
+}
+
 type HypothesisRef = Rc<RefCell<Hypothesis>>;
 type Agenda = BinaryHeap<Hypothesis>;
 
 struct Hypothesis {
-    node_ref: NodeRef,
+    node_idx: usize,
     next: Option<HypothesisRef>,
     fx: f64,
     gx: f64,
 }
 
 impl Hypothesis {
-    pub fn new(node_ref: NodeRef, next: Option<HypothesisRef>, fx: f64, gx: f64) -> Self {
+    pub fn new(node_idx: usize, next: Option<HypothesisRef>, fx: f64, gx: f64) -> Self {
         Self {
-            node_ref,
+            node_idx,
             next,
             fx,
             gx,
@@ -52,336 +371,25 @@ impl Ord for Hypothesis {
     }
 }
 
-/// Structure to implement Viterbi algorithm to find the best encoding, or
-/// sample from all possible encodings of a given sentence.
-#[derive(Debug)]
-pub struct Lattice<'a> {
-    /// The sentence to be tokenized.
-    pub sentence: &'a [u8],
-    /// An array which keeps track of all the tokens which begin at a given
-    /// position in the sentence.
-    pub begin_nodes: Vec<Vec<NodeRef>>,
-    /// An array which keeps track of all the tokens which end at a given
-    /// position in the sentence.
-    pub end_nodes: Vec<Vec<NodeRef>>,
-
-    nodes: Vec<NodeRef>,
-    len: usize,
+#[derive(Default)]
+pub struct VecPool {
+    pool: Vec<Vec<usize>>,
 }
 
-impl std::fmt::Display for Lattice<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let display_pieces = |nodes: &Vec<Vec<NodeRef>>| {
-            nodes
-                .iter()
-                .map(|l| {
-                    l.iter()
-                        .map(|n| self.piece(&n.borrow()))
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        };
-
-        f.debug_struct("Lattice")
-            .field("sentence", &self.sentence)
-            .field("begin_nodes", &display_pieces(&self.begin_nodes))
-            .field("end_nodes", &display_pieces(&self.end_nodes))
-            .finish()
-    }
-}
-
-/// A node from the lattice, that helps reconstruct the underlying `String`
-#[derive(Debug, Clone)]
-pub struct Node {
-    /// Token ID.
-    pub id: usize,
-    /// ID of the node in the lattice.
-    pub node_id: usize,
-    /// Position in the sentence.
-    pub pos: usize,
-    /// Length of the token.
-    pub length: usize,
-    /// Previous node.
-    pub prev: Option<NodeRef>,
-
-    backtrace_score: f64,
-    score: f64,
-}
-
-impl PartialEq for Node {
-    fn eq(&self, other: &Node) -> bool {
-        self.id == other.id
-    }
-}
-
-impl Node {
-    pub fn new(id: usize, node_id: usize, pos: usize, length: usize, score: f64) -> Self {
+impl VecPool {
+    pub fn with_capacity(a: usize, b: usize) -> Self {
         Self {
-            id,
-            node_id,
-            pos,
-            length,
-            prev: None,
-            score,
-            backtrace_score: 0.0,
+            pool: vec![Vec::with_capacity(b); a],
         }
     }
-}
-
-fn log_sum_exp(x: f64, y: f64, init_mode: bool) -> f64 {
-    if init_mode {
-        y
-    } else {
-        let (vmin, vmax) = if x > y { (y, x) } else { (x, y) };
-        let k_minus_log_epsilon = 50.0;
-        if vmax > vmin + k_minus_log_epsilon {
-            vmax
-        } else {
-            vmax + ((vmin - vmax).exp() + 1.0).ln()
-        }
-    }
-}
-
-impl<'a> Lattice<'a> {
-    pub fn from(sentence: &'a [u8], bos_id: usize, eos_id: usize) -> Self {
-        let len = sentence.len();
-
-        let k_reserved_node_size = 16;
-
-        let mut nodes: Vec<NodeRef> = Vec::with_capacity(k_reserved_node_size);
-        let mut begin_nodes = vec![Vec::with_capacity(k_reserved_node_size); len + 1];
-        let mut end_nodes = vec![Vec::with_capacity(k_reserved_node_size); len + 1];
-
-        let bos = Rc::new(RefCell::new(Node::new(bos_id, 0, 0, 0, 0.0)));
-        let eos = Rc::new(RefCell::new(Node::new(eos_id, 1, len, 0, 0.0)));
-
-        begin_nodes[len].push(Rc::clone(&eos));
-        end_nodes[0].push(Rc::clone(&bos));
-
-        nodes.push(bos);
-        nodes.push(eos);
-
-        Self {
-            sentence,
-            len,
-            nodes,
-            begin_nodes,
-            end_nodes,
-        }
+    // Get a Vec<usize> from the pool, or create a new one if the pool is empty.
+    pub fn get(&mut self) -> Vec<usize> {
+        self.pool.pop().unwrap_or_default()
     }
 
-    pub fn insert(&mut self, pos: usize, length: usize, score: f64, id: usize) {
-        let node_id = self.nodes.len();
-        let node = Rc::new(RefCell::new(Node::new(id, node_id, pos, length, score)));
-
-        self.begin_nodes[pos].push(Rc::clone(&node));
-        self.end_nodes[pos + length].push(Rc::clone(&node));
-
-        self.nodes.push(node);
-    }
-
-    pub fn viterbi(&mut self) -> Vec<NodeRef> {
-        let len = self.len;
-        let mut pos = 0;
-        while pos <= len {
-            if self.begin_nodes[pos].is_empty() {
-                return vec![];
-            }
-            for rnode in &self.begin_nodes[pos] {
-                rnode.borrow_mut().prev = None;
-                let mut best_score = 0.0;
-                let mut best_node: Option<NodeRef> = None;
-                for lnode in &self.end_nodes[pos] {
-                    let score = lnode.borrow().backtrace_score + rnode.borrow().score;
-                    if best_node.is_none() || score > best_score {
-                        // TODO can we remove this clone ?
-                        best_node = Some(lnode.clone());
-                        best_score = score
-                    }
-                }
-                match best_node {
-                    Some(bnode) => {
-                        rnode.borrow_mut().prev = Some(Rc::clone(&bnode));
-                        rnode.borrow_mut().backtrace_score = best_score;
-                    }
-                    None => return vec![],
-                }
-            }
-            if self.sentence[pos..].iter().next().is_some() {
-                pos += 1;
-            } else {
-                break;
-            }
-        }
-
-        let mut results: Vec<NodeRef> = vec![];
-        let root = self.begin_nodes[len][0].borrow();
-        let prev = root.prev.as_ref();
-        if prev.is_none() {
-            return vec![];
-        }
-        let mut node: NodeRef = prev.unwrap().clone();
-        while node.borrow().prev.is_some() {
-            results.push(node.clone());
-            let n = node.borrow().clone();
-            node = n.prev.as_ref().unwrap().clone();
-        }
-        results.reverse();
-        results
-    }
-
-    pub fn piece(&self, node: &Node) -> String {
-        String::from_utf8_lossy(&self.sentence[node.pos..node.pos + node.length]).to_string()
-    }
-
-    pub fn nbest(&mut self, n: usize) -> Vec<Vec<NodeRef>> {
-        match n {
-            0 => vec![],
-            1 => vec![self.viterbi()],
-            _ => {
-                let mut agenda: Agenda = BinaryHeap::new();
-                let mut hypotheses: Vec<Vec<NodeRef>> = vec![];
-                let eos = self.eos_node();
-                let score = eos.borrow().score;
-                let hypo = Hypothesis::new(eos, None, score, score);
-                agenda.push(hypo);
-
-                // Fill backtrace scores
-                self.viterbi();
-
-                while !agenda.is_empty() {
-                    let top = Rc::new(RefCell::new(agenda.pop().unwrap()));
-                    let node = Rc::clone(&top.borrow().node_ref);
-                    if node.borrow().id == self.bos_node().borrow().id {
-                        let mut hypothesis = vec![];
-                        let mut next: HypothesisRef =
-                            Rc::clone(top.borrow().next.as_ref().unwrap());
-                        while next.borrow().next.is_some() {
-                            hypothesis.push(next.borrow().node_ref.clone());
-                            let c: HypothesisRef = next.clone();
-                            next = Rc::clone(c.borrow().next.as_ref().unwrap());
-                        }
-                        hypotheses.push(hypothesis);
-                        if hypotheses.len() == n {
-                            return hypotheses;
-                        }
-                    } else {
-                        for lnode in &self.end_nodes[node.borrow().pos] {
-                            let top_gx = top.borrow().gx;
-                            let fx = lnode.borrow().backtrace_score + top_gx;
-                            let gx = lnode.borrow().score + top_gx;
-                            let hyp =
-                                Hypothesis::new(Rc::clone(lnode), Some(Rc::clone(&top)), fx, gx);
-                            agenda.push(hyp);
-                        }
-                        // When the input is too long or contains duplicated phrases,
-                        // `agenda` will get extremely big. Here we avoid this case by
-                        // dynamically shrinking the agenda.
-                        let k_max_agenda_size = 100_000;
-                        let k_min_agenda_size = 512;
-                        if agenda.len() > k_max_agenda_size {
-                            let mut new_agenda = BinaryHeap::new();
-                            let len = min(k_min_agenda_size, n * 10);
-                            for _i in 0..len {
-                                new_agenda.push(agenda.pop().unwrap());
-                            }
-                            agenda = new_agenda;
-                        }
-                    }
-                }
-                hypotheses
-            }
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    pub fn bos_node(&self) -> NodeRef {
-        Rc::clone(&self.end_nodes[0][0])
-    }
-
-    pub fn eos_node(&self) -> NodeRef {
-        Rc::clone(&self.begin_nodes[self.len][0])
-    }
-
-    /// Computes the marginal probability for each node (token) which is the
-    /// probability of this token being part of the optimal segmentation of the
-    /// sentence. Returns the normalisation constant which is the probability
-    /// of reaching the end of the sentence from the beginning which in itself
-    /// corresponds to the probability of the sentence.
-    pub fn populate_marginal(&self, expected: &mut [f64]) -> f64 {
-        let len = self.len();
-        let n_nodes = self.nodes.len();
-
-        // Initialize alpha (forward probabilities) and beta (backward
-        // probabilities) vectors. They measure the log probabilities of
-        // reaching a particular node (token) from the start (alpha) or end
-        // (beta) of the lattice.
-        // - alpha[i] is the log probability of reaching node i from the bos
-        // - beta[i] is the log probability of reaching the eos from node i
-        let mut alpha = vec![0.0; n_nodes];
-        let mut beta = vec![0.0; n_nodes];
-
-        // Calculate forward probabilities (alpha)
-        for pos in 0..=len {
-            for rnode in &self.begin_nodes[pos] {
-                for lnode in &self.end_nodes[pos] {
-                    let lid = lnode.borrow().node_id;
-                    let rid = rnode.borrow().node_id;
-                    // Update alpha for the right node with log-sum-exp to
-                    // prevent underflow, adding the score from the left node
-                    // and its alpha
-                    alpha[rid] = log_sum_exp(
-                        alpha[rid],
-                        lnode.borrow().score + alpha[lid],
-                        *lnode == self.end_nodes[pos][0],
-                    );
-                }
-            }
-        }
-
-        // Calculate backward probabilities (beta)
-        for pos in (0..=len).rev() {
-            for lnode in &self.end_nodes[pos] {
-                for rnode in &self.begin_nodes[pos] {
-                    let lid = lnode.borrow().node_id;
-                    let rid = rnode.borrow().node_id;
-
-                    // Update beta for the left node similarly, ensuring total
-                    // path probability is accumulated
-                    beta[lid] = log_sum_exp(
-                        beta[lid],
-                        rnode.borrow().score + beta[rid],
-                        *rnode == self.begin_nodes[pos][0],
-                    );
-                }
-            }
-        }
-
-        // Calculate the normalization constant (z) from the EOS node's alpha
-        let eos_id = self.begin_nodes[len][0].borrow().node_id;
-        let z = alpha[eos_id];
-
-        // Update the expected frequencies for each node based on its marginal
-        // probability
-        for pos in 0..len {
-            for node in &self.begin_nodes[pos] {
-                let node_id = node.borrow().node_id;
-                let id = node.borrow().id;
-                let a = alpha[node_id];
-                let b = beta[node_id];
-
-                // Calculate the total path probability through this node,
-                // subtract the normalization constant and update expected
-                // frequencies.
-                let total = a + node.borrow().score + b - z;
-                let update = total.exp();
-                expected[id] += update;
-            }
-        }
-
-        z
+    // Return a Vec<usize> to the pool for future reuse.
+    pub fn put(&mut self, mut vec: Vec<usize>) {
+        vec.clear(); // Clear the vector before putting it back in the pool.
+        self.pool.push(vec);
     }
 }

@@ -1,6 +1,9 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rayon::{iter::ParallelIterator, slice::ParallelSlice};
-use tokengeex::{lattice::Lattice, Model, ModelWrapper, Processor, ADVANCED_RE};
+use tokengeex::{
+    lattice::{Lattice, VecPool},
+    Model, ModelWrapper, Processor, TokenID, ADVANCED_RE,
+};
 
 fn load_samples() -> (Vec<String>, usize) {
     let data = std::fs::read("./data/train.bin").unwrap();
@@ -51,7 +54,7 @@ fn lattice(c: &mut Criterion) {
             Box::new(tokengeex::CrlfProcessor),
             Box::new(tokengeex::UnicodeProcessor::Nfc),
         ],
-        1000,
+        10000,
     );
 
     let mut group = c.benchmark_group("lattice");
@@ -60,8 +63,11 @@ fn lattice(c: &mut Criterion) {
 
     group.bench_function("from", |b| {
         b.iter(|| {
-            for s in &samples {
-                Lattice::from(s.as_bytes(), 0, 1);
+            let mut lattice = Lattice::default();
+            let mut pool = VecPool::with_capacity(1024 * 128, 16);
+
+            for sample in &samples {
+                lattice.from(sample.as_bytes(), 0, 1, &mut pool);
             }
         });
     });
@@ -69,17 +75,25 @@ fn lattice(c: &mut Criterion) {
     let tokenizer = tokengeex::load("./data/unigram-65k.json").unwrap();
     let ModelWrapper::Unigram(model) = tokenizer.model();
 
-    println!("RAYON_NUM_THREADS: {}", rayon::current_num_threads());
+    println!(
+        "Lattice tests are slow. Currently using {} threads.",
+        rayon::current_num_threads()
+    );
 
     group.bench_function("from_populate_nodes_multithreaded", |b| {
         b.iter(|| {
             let chunk_size = std::cmp::max(1, samples.len() / rayon::current_num_threads());
+
             samples.par_chunks(chunk_size).for_each(|chunk| {
+                let mut lattice = Lattice::default();
+                let mut pool = VecPool::with_capacity(1024 * 128, 16);
+
                 for sample in chunk {
-                    let mut lattice = Lattice::from(
+                    lattice.from(
                         sample.as_bytes(),
-                        model.vocab_size(),
-                        model.vocab_size() + 1,
+                        (model.vocab_size()) as TokenID,
+                        (model.vocab_size() + 1) as TokenID,
+                        &mut pool,
                     );
                     model.populate_nodes(&mut lattice);
                 }

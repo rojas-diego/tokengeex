@@ -94,25 +94,50 @@ impl UnigramTrainer {
                 // efficiency.
                 let mut lattice = Lattice::default();
 
+                // let tid = std::thread::current().id();
+
+                // For each sample, we iterate over snippets of max
+                // `MAX_SAMPLE_LENGTH` bytes.
+                // This is because populate_marginal scales poorly with respect
+                // to sample length.
+                const MAX_SAMPLE_LENGTH: usize = 8192;
+
                 for &sample in chunk {
                     debug_assert!(!sample.is_empty(), "empty sample");
 
-                    // Compute all the possible segmentations of the sample.
-                    lattice.from(
-                        sample.as_bytes(),
-                        (model.vocab.len() + 1) as TokenID,
-                        (model.vocab.len() + 2) as TokenID,
-                        &mut pool,
-                    );
-                    model.populate_nodes(&mut lattice);
+                    // We iterate over chunks of the sample to avoid allocating
+                    // a new lattice for each sample.
+                    for snippet in sample.as_bytes().chunks(MAX_SAMPLE_LENGTH) {
+                        // let start = std::time::Instant::now();
 
-                    let z = lattice.populate_marginal(&mut expected_frequencies);
-                    if !z.is_normal() {
-                        panic!(
-                            "normalization constant is f64::NaN (z={}, len={})",
-                            z,
-                            sample.len()
+                        lattice.from(
+                            snippet,
+                            (model.vocab.len() + 1) as TokenID,
+                            (model.vocab.len() + 2) as TokenID,
+                            &mut pool,
                         );
+                        model.populate_nodes(&mut lattice);
+
+                        // let middle = std::time::Instant::now();
+
+                        let z = lattice.populate_marginal(&mut expected_frequencies);
+                        if !z.is_normal() {
+                            panic!(
+                                "normalization constant is f64::NaN (z={}, len={})",
+                                z,
+                                sample.len()
+                            );
+                        }
+
+                        // let end = std::time::Instant::now();
+
+                        // log::info!(
+                        //     "E-step: Sample tid={:?} len={} nodes={}ms marginal={}ms",
+                        //     tid,
+                        //     snippet.len(),
+                        //     middle.duration_since(start).as_millis(),
+                        //     end.duration_since(middle).as_millis(),
+                        // );
                     }
                 }
 

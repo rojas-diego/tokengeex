@@ -84,52 +84,29 @@ RUST_LOG=debug TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=96 tokengeex train -
     --initial-vocab-max-token-length 24 \
     --initial-vocab-size 2500000 \
     --initial-vocab-insert-probability 0.001 \
-    --initial-vocab-allow '(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)' \
+    --initial-vocab-allow '(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:(?:(?:D|DU|DC|U|C) )|(?: ?(?:[0-9]+))|(?: ?(?:[a-z]+)))+$)' \
     --unigram-shrinking-factor 0.75 \
     --unigram-num-sub-iterations 2 \
     --added-tokens-file ./hub/tokens/added.json \
     $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --valid ${lang}:./hub/data/valid/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
 ```
 
-### Regexes
-
-Here is an example set of Regexes used to influence the initial vocabulary.
-
-| Regex                                                                     | Description                                                                                                                                                                                          | Example                               |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `^.$`                                                                     | Any lone Unicode character.                                                                                                                                                                          | `a`, `好`                             |
-| `^D?[UC]? $`                                                              | Any capcode marker.                                                                                                                                                                                  | `DC `, `U `                           |
-| `^ ?[0-9]{1,4}$`                                                          | Any number of 4 digits or less. May begin with a space.                                                                                                                                              | ` 123`, `9`                           |
-| `^[\u3400-\u4DBF\u4E00-\u9FFF]+$`                                         | Any sequence of Chinese characters.                                                                                                                                                                  | `我叫罗杰斯`                          |
-| `^ ?[a-z]+(?: [a-z]+){0,3}$`                                              | Any space separated sequence of up to 4 lowercase words. May begin with a space.                                                                                                                     | ` in order to`, `hello`               |
-| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`          | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed.                                                                                        | `DC complexDU casingD 123`            |
-| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$`       | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots and underscores in-between words are allowed.                                     | ` users_D table`, `1.D 0`             |
-| `^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+\|[0-9]{1,4})(?:D?[UC]?))){0,4}$` | Any space separated sequence of up to 4 lowercase words. May begin with a space. Capcode and numbers allowed. Dots, underscores, colons, dashes, slashes, and aterisks in-between words are allowed. | `D https://D github.D com`            |
-| `^<D?[UC]? [a-z]+(?:>\|/>\| />)?$`                                        | Any capcode-encoded XML/HTML tag, opened or closed.                                                                                                                                                  | `<D a>`, `<DU a`, `<D a/>`, `<D a />` |
-| `^[[:punct:][:space:][DCU]]+$`                                            | Any sequence of punctuation, whitespace, and capcode.                                                                                                                                                | `\t`, `;\n\t\t`, `(D`                 |
-
 ### Configurations
 
 #### Strict
 
-Allows XML/HTML tags, sequences of up to three words (letters, capcode, numbers), Chinese words, Unicode characters.
-
 ```regexp
-(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:(?:(?:D|DU|DC|U|C) )|(?: ?(?:[0-9]+))|(?: ?(?:[a-z]+)))+$)
 ```
 
 #### Base
 
-Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots), Chinese words, Unicode characters.
-
 ```regexp
-(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+Coming Soon
 ```
 
 #### Advanced
 
-Allows XML/HTML tags, complex sequences of up to four words (letters, capcode, numbers, underscores, dots, slashes, colons, dashes, asteriks), Chinese words, Unicode characters.
-
 ```regexp
-(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._/:\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)
+Coming Soon
 ```

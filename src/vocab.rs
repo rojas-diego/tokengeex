@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-pub const STRICT_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
+pub const STRICT_RE: &str = r#"(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:(?:(?:D|DU|DC|U|C) )|(?: ?(?:[0-9]+))|(?: ?(?:[a-z]+)))+$)"#;
 pub const BASE_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
 pub const ADVANCED_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
 
@@ -191,6 +191,280 @@ impl VocabularyGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_regex_matches(re: &Regex, ok: &[&str], nok: &[&str]) {
+        for sample in ok {
+            assert!(
+                re.is_match(sample),
+                "Expected {:?} to match {:?}",
+                sample,
+                re
+            );
+        }
+
+        for sample in nok {
+            assert!(
+                !re.is_match(sample),
+                "Expected {:?} not to match {:?}",
+                sample,
+                re
+            );
+        }
+    }
+
+    #[test]
+    fn make_regexes_capcode() {
+        // ---------------------------------------------------------------------
+        // Basic
+        // ---------------------------------------------------------------------
+        // Capcode marker sequence including the space.
+        let capcode = r#"(?:(?:D|DU|DC|U|C) )"#;
+        // Capcode marker sequence including the space and the D marker.
+        let delete_capcode = r#"(?:(?:DU|DC|D) )"#;
+        // Any lowercase word.
+        let word = r#"(?:[a-z]+)"#;
+        // Any number.
+        let number = r#"(?:[0-9]+)"#;
+        // Small number (max 3 digits).
+        let _small_number = r#"(?:[0-9]{1,3})"#;
+        // Word or number.
+        let word_or_number = r#"(?:[a-z0-9]+)"#;
+        // A word prefixed by a space.
+        let _space_word = r#"(?: [a-z]+)"#;
+        // A number prefixed by a space.
+        let _space_number = r#"(?: [0-9]+)"#;
+        // A number or a word prefixed by a space.
+        let _space_word_or_number = r#"(?: [a-z0-9]+)"#;
+        // Many words, numbers and capcode.
+        let many_words_numbers_capcode =
+            format!("(?:{}|(?: ?{})|(?: ?{}))+", capcode, number, word);
+        // Any lowercase word with capcode.
+        let capcode_word = format!("(?:{}{})", capcode, word);
+        // Any lowercase word with delete capcode.
+        let delete_capcode_word = format!("(?:{}{})", delete_capcode, word);
+        // Any number with capcode.
+        // let capcode_number = format!("(?:{}{})", capcode, number);
+        // Any number with delete capcode.
+        let delete_capcode_number = format!("(?:{}{})", delete_capcode, number);
+        // Any sequence of Chinese characters.
+        let chinese = r#"(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)"#;
+
+        let chinese_regex = Regex::new(&format!("^{}$", chinese)).unwrap();
+        println!("Chinese: {}", chinese_regex);
+        assert_regex_matches(
+            &chinese_regex,
+            &["好", "你好", "我叫罗杰斯"],
+            &["hello", "你好 ", "好 "],
+        );
+
+        let capcode_regex = Regex::new(&format!("^{}$", capcode)).unwrap();
+        println!("Capcode: {}", capcode_regex);
+        assert_regex_matches(&capcode_regex, &["DC ", "DU ", "D ", "U ", "C "], &[" "]);
+
+        let capcode_word_regex = Regex::new(&format!("^{}$", capcode_word)).unwrap();
+        println!("Capcode lowercase word: {}", capcode_word_regex);
+        assert_regex_matches(
+            &capcode_word_regex,
+            &["D github", "DU hi", "DC bonjour"],
+            &["hello", "DC "],
+        );
+
+        let many_words_numbers_capcode_regex =
+            Regex::new(&format!("^{}$", many_words_numbers_capcode)).unwrap();
+        println!(
+            "Many words, numbers and capcode: {}",
+            many_words_numbers_capcode_regex
+        );
+        assert_regex_matches(
+            &many_words_numbers_capcode_regex,
+            &[
+                "word",
+                " word",
+                "some words",
+                " some more words",
+                " some 123",
+                "DC someU 123",
+                "DC someU 123 word",
+                "D someDC varDC 123",
+            ],
+            &["github ", "123 ", "DC"],
+        );
+
+        // ---------------------------------------------------------------------
+        // URLs and Network Miscellaneous
+        // ---------------------------------------------------------------------
+        // A subdomain which is a sequence of {capcode}{word} which may be
+        // separated by capcode.
+        let subdomain = format!("(?:{}(?:-{})*)", delete_capcode_word, delete_capcode_word);
+        // Multiple subdomains separated by dots.
+        let subdomains = format!("(?:{}(?:\\.{})*)", subdomain, subdomain);
+        // IPv4 address including the capcode.
+        let ipv4 = format!(
+            "(?:{}?{}(?:\\.{}){{3}})",
+            delete_capcode, number, delete_capcode_number
+        );
+        // Port specification including the ':'.
+        let port = format!("(?::{}[0-9]{{1,5}})", delete_capcode);
+
+        let subdomain_regex = Regex::new(&format!("^{}$", subdomain)).unwrap();
+        println!("Subdomain: {}", subdomain_regex);
+        assert_regex_matches(
+            &subdomain_regex,
+            &["D github", "D github-D com", "D github-D com-D io"],
+            &["D github-D com-D io-", "github-D com", "U github"],
+        );
+
+        let ipv4_regex = Regex::new(&format!("^{}$", ipv4)).unwrap();
+        println!("IPv4: {}", ipv4_regex);
+        assert_regex_matches(
+            &ipv4_regex,
+            &["D 127.D 0.D 0.D 1", "0.D 0.D 0.D 0"],
+            &["D 256.D 256.D 256.D 256.D 256", "D 0.D 1."],
+        );
+
+        let subdomains_regex = Regex::new(&format!("^{}$", subdomains)).unwrap();
+        println!("Subdomains: {}", subdomains_regex);
+        assert_regex_matches(
+            &subdomains_regex,
+            &["D github-D world.D com", "D github-D world.D com-D io"],
+            &["D github.D com."],
+        );
+
+        let port_regex = Regex::new(&format!("^ ?{}$", port)).unwrap();
+        println!("Port: {}", port_regex);
+        assert_regex_matches(
+            &port_regex,
+            &[":D 80", " :D 443", ":D 8080"],
+            &[":D 999999"],
+        );
+
+        let space_and_url = format!("(?: {}://(?:{}|{}){}?)", word, subdomains, ipv4, port);
+
+        let space_and_url_regex = Regex::new(&format!("^{}$", space_and_url)).unwrap();
+        println!("Space and URL: {}", space_and_url_regex);
+        assert_regex_matches(
+            &space_and_url_regex,
+            &[
+                " https://D github.D com",
+                " tcp://D www.D google.D com",
+                " https://D grafana.D codegeex.D cn:D 8443",
+                " http://D 127.D 0.D 0.D 1:D 80",
+            ],
+            &["https://github.com", " http://www"],
+        );
+
+        // ---------------------------------------------------------------------
+        // HTML
+        // ---------------------------------------------------------------------
+        let html_tag_regex = Regex::new("^<D?[UC]? [a-z]+(?:>|/>| />)?$").unwrap();
+        println!("HTML Tag: {}", html_tag_regex);
+        assert_regex_matches(
+            &html_tag_regex,
+            &["<D div>", "<DU a", "<D a/>", "<D a />"],
+            &[],
+        );
+
+        // ---------------------------------------------------------------------
+        // Punctuation
+        // ---------------------------------------------------------------------
+        // Punctuation with space.
+        let many_punct_capcode_or_space = r#"(?:[[:punct:] DCU]+)"#;
+        // L punctuation with whitespace.
+        let l_punct_whitespace = format!("(?:{}?(?:[[:space:]]*))", many_punct_capcode_or_space);
+        // R punctuation with whitespace.
+        let r_punct_whitespace = format!("(?:[[:space:]]*{}?)", many_punct_capcode_or_space);
+        // Word that begins with punctuation.
+        let word_lpunct = format!(
+            "(?:(?:[[:punct:]]|(?:::)){}{})",
+            delete_capcode, word_or_number
+        );
+
+        let word_lpunct_regex = Regex::new(&format!("^{}$", word_lpunct)).unwrap();
+        println!("Word with R punctuation: {}", word_lpunct_regex);
+        assert_regex_matches(
+            &word_lpunct_regex,
+            &[
+                "-D word", "_D 123", "*DU word", "/DC word", "&D word", "::D word",
+            ],
+            &["D word", "D word-", "D word_"],
+        );
+
+        let l_punct_whitespace_regex = Regex::new(&format!("^{}$", l_punct_whitespace)).unwrap();
+        println!(
+            "L Punctuation with whitespace: {}",
+            l_punct_whitespace_regex
+        );
+        assert_regex_matches(
+            &l_punct_whitespace_regex,
+            &[" ", " . ", ".", " .", ". / ^ \t\n"],
+            &[" \t \n . / ^ "],
+        );
+
+        let r_punct_whitespace_regex = Regex::new(&format!("^{}$", r_punct_whitespace)).unwrap();
+        println!(
+            "R Punctuation with whitespace: {}",
+            r_punct_whitespace_regex
+        );
+        assert_regex_matches(
+            &r_punct_whitespace_regex,
+            &[" ", " . ", ".", " .", "\t\n./^"],
+            &[". / ^ \t \n "],
+        );
+
+        // ---------------------------------------------------------------------
+        // STRICT
+        // ---------------------------------------------------------------------
+        // The strict regex allows the following patterns:
+        // - Lone characters
+        // - Words
+        // - Numbers
+        // - Word with capcode
+        // - Numbers with capcode
+        // - Word or number LPunct
+        // - R or L punct with whitespace
+        // - Chinese
+        // - URLs
+        let strict_regex = Regex::new(
+            &[
+                ".",
+                &word_lpunct,
+                &l_punct_whitespace,
+                &r_punct_whitespace,
+                &chinese,
+                &space_and_url,
+                &many_words_numbers_capcode,
+            ]
+            .map(|re| format!("(?:^{}$)", re))
+            .join("|"),
+        )
+        .unwrap();
+        println!("Strict: {}", strict_regex);
+        assert_regex_matches(
+            &strict_regex,
+            &[
+                // Capcode
+                "DC ",
+                // Simple word & number
+                "word",
+                "123",
+                // Word & number with capcode
+                "DC word",
+                "DU 123",
+                // Many words, numbers and capcode
+                "DC someDU complexDU 123",
+                // Word or number prefixed with punctuation
+                "-D word",
+                "_D 123",
+                // Punctuation with whitespace
+                "\n}",
+                // Spaced URLs
+                " https://D grafana.D codegeex.D cn:D 8443",
+                // Chinese
+                "我叫罗杰斯",
+            ],
+            &["github ", "123 ", "https://github.com", "hello/"],
+        );
+    }
 
     #[test]
     fn test_regexes() {

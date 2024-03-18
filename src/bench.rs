@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 use tokengeex::{
     lattice::{Lattice, VecPool},
-    Model, ModelWrapper, Processor, TokenID, ADVANCED_RE,
+    Model, ModelWrapper, Processor, TokenID, ADVANCED_RE, BASE_RE, STRICT_RE,
 };
 
 fn load_samples() -> (Vec<String>, usize) {
@@ -242,14 +242,27 @@ fn vocabulary_generator(c: &mut Criterion) {
         1000,
     );
 
-    let mut generator = tokengeex::VocabularyGenerator::new(24, 0.01, ADVANCED_RE);
-
     let mut group = c.benchmark_group("vocabulary_generator");
     group.throughput(Throughput::Bytes(bytes as u64));
     group.sampling_mode(criterion::SamplingMode::Flat);
     group.sample_size(10);
 
-    group.bench_function("feed", |b| {
+    let mut generator = tokengeex::VocabularyGenerator::new(24, 0.01, STRICT_RE);
+    group.bench_function("feed_strict_24_1pct", |b| {
+        b.iter(|| {
+            generator.feed(samples.as_slice());
+        });
+    });
+
+    let mut generator = tokengeex::VocabularyGenerator::new(24, 0.01, BASE_RE);
+    group.bench_function("feed_base_24_1pct", |b| {
+        b.iter(|| {
+            generator.feed(samples.as_slice());
+        });
+    });
+
+    let mut generator = tokengeex::VocabularyGenerator::new(24, 0.01, ADVANCED_RE);
+    group.bench_function("feed_advanced_24_1pct", |b| {
         b.iter(|| {
             generator.feed(samples.as_slice());
         });

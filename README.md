@@ -75,14 +75,14 @@ cargo install tokengeex --features cli
 Here's the full command used to train vocabularies.
 
 ```shell
-RUST_LOG=info TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=96 tokengeex train --model 'unigram' \
+RUST_LOG=debug TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=96 tokengeex train --model 'unigram' \
     --output 'tokenizer.json' \
     --vocab-size 65536 \
     --processor nfc \
     --processor crlf \
     --processor capcode \
     --initial-vocab-max-token-length 24 \
-    --initial-vocab-size 10000000 \
+    --initial-vocab-size 2500000 \
     --initial-vocab-insert-probability 0.001 \
     --initial-vocab-allow '(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)' \
     --unigram-shrinking-factor 0.75 \

@@ -8,7 +8,7 @@ use crate::{
     },
     Model, Result, Token, TokenID, MAX_TOKEN_LENGTH,
 };
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::RwLock, thread::ThreadId};
 
 pub struct UnigramTrainer {
     vocab_size: usize,
@@ -78,94 +78,116 @@ impl UnigramTrainer {
     /// segmentations of each sample into tokens, weighted by the probability
     /// of each segmentation.
     fn run_e_step(&self, model: &Unigram, samples: &[&str]) -> Vec<f64> {
-        let chunk_size = std::cmp::max(samples.len() / current_num_threads(), 1);
-        let expected_frequencies: Vec<f64> = samples
-            .maybe_par_chunks(chunk_size)
-            .map(|chunk| {
-                // How much we expect to see each token in the vocabulary
-                // in this chunk of samples. This frequency is computed based
-                // on the probability of the token being part of optimal splits
-                // (its marginal probability).
-                let mut expected_frequencies: Vec<f64> = vec![0.0; model.vocab_size()];
-                // Keep a pool of vectors to reduce the number of allocations
-                // that the Lattice makes.
-                let mut pool = VecPool::with_capacity(1024 * 1024, 16);
-                // Re-use the same lattice for all the samples in the chunk for
-                // efficiency.
-                let mut lattice = Lattice::default();
+        // We chunk up samples into chunks that are at most 1/10th of the
+        // per-thread workload because too large chunks can cause some threads
+        // to be idle while others are still working. We also prevent
+        // chunks from being too small to avoid too much overhead.
+        let min_chunk_size = 1024;
+        let max_chunk_size = samples.len() / current_num_threads() / 10;
+        let chunk_size = std::cmp::max(
+            1,
+            if max_chunk_size < min_chunk_size {
+                // If we have a small amount of samples, it's better to have
+                // exactly num_threads chunks.
+                ((samples.len() as f64) / (current_num_threads() as f64)).ceil() as usize
+            } else {
+                max_chunk_size
+            },
+        );
+        // At the end of each chunk, each thread merges its expected
+        // frequencies to the global expected frequencies through a mutex.
+        let acc_expected_frequencies = RwLock::new(vec![0.0; model.vocab.len()]);
 
-                // Get thread ID as a u64.
-                let tid = unsafe {
-                    std::mem::transmute::<std::thread::ThreadId, u64>(std::thread::current().id())
-                };
+        log::info!(
+            "E-step | {} samples | {} threads | {} chunks | {} chunk size",
+            samples.len(),
+            current_num_threads(),
+            (samples.len() + chunk_size) / chunk_size,
+            chunk_size
+        );
 
-                // For each sample, we iterate over snippets of max
-                // `MAX_SAMPLE_LENGTH` bytes.
-                const MAX_SAMPLE_LENGTH: usize = 8192;
+        samples.maybe_par_chunks(chunk_size).for_each(|chunk| {
+            // For each sample, we iterate over snippets of max
+            // `MAX_SAMPLE_LENGTH` bytes.
+            const MAX_SAMPLE_LENGTH: usize = 8192;
 
-                let start = std::time::Instant::now();
-                let mut last_status_report = std::time::Instant::now();
-                let mut processed_bytes = 0;
+            let tid =
+                unsafe { std::mem::transmute::<ThreadId, usize>(std::thread::current().id()) };
+            let start = std::time::Instant::now();
+            let mut last_status_report = std::time::Instant::now();
+            let mut processed_bytes = 0;
+            let mut expected_frequencies = vec![0.0; model.vocab.len()];
+            let mut lattice = Lattice::default();
+            let mut pool = VecPool::with_capacity(MAX_SAMPLE_LENGTH, 16);
 
-                for (i, &sample) in chunk.iter().enumerate() {
+            log::debug!("Worker {:>3} | {:>6} samples | STARTING", tid, chunk.len());
+
+            fn mb_per_sec(n: usize, since: std::time::Instant) -> f64 {
+                (n as f64 / 1024.0 / 1024.0) / since.elapsed().as_secs_f64()
+            }
+
+            for (i, sample) in chunk.iter().enumerate() {
+                for snippet in sample.as_bytes().chunks(MAX_SAMPLE_LENGTH) {
                     debug_assert!(!sample.is_empty(), "empty sample");
 
-                    // We iterate over chunks of the sample to avoid allocating
-                    // a new lattice for each sample.
-                    for snippet in sample.as_bytes().chunks(MAX_SAMPLE_LENGTH) {
-                        lattice.from(
-                            snippet,
-                            (model.vocab.len() + 1) as TokenID,
-                            (model.vocab.len() + 2) as TokenID,
-                            &mut pool,
+                    lattice.from(
+                        snippet,
+                        (model.vocab.len() + 1) as TokenID,
+                        (model.vocab.len() + 2) as TokenID,
+                        &mut pool,
+                    );
+                    model.populate_nodes(&mut lattice);
+
+                    let z = lattice.populate_marginal(&mut expected_frequencies);
+                    if !z.is_normal() {
+                        panic!(
+                            "normalization constant is f64::NaN (z={}, len={})",
+                            z,
+                            sample.len()
                         );
-                        model.populate_nodes(&mut lattice);
-
-                        let z = lattice.populate_marginal(&mut expected_frequencies);
-                        if !z.is_normal() {
-                            panic!(
-                                "normalization constant is f64::NaN (z={}, len={})",
-                                z,
-                                sample.len()
-                            );
-                        }
-                    }
-
-                    processed_bytes += sample.len();
-
-                    fn format_duration(d: std::time::Duration) -> String {
-                        let seconds = d.as_secs() % 60;
-                        let minutes = (d.as_secs() / 60) % 60;
-                        let hours = (d.as_secs() / 60) / 60;
-                        format!("{:0>2}:{:0>2}:{:0>2}", hours, minutes, seconds)
-                    }
-
-                    if last_status_report.elapsed().as_secs() >= 60 {
-                        log::debug!(
-                            "Worker {} | {:>6}/{} samples | {:.3}MB/s | {} ETA",
-                            tid,
-                            i,
-                            chunk.len(),
-                            (processed_bytes as f64 / 1024.0 / 1024.0)
-                                / start.elapsed().as_secs_f64(),
-                            format_duration(
-                                start.elapsed() * (chunk.len() as u32 - i as u32) / (i as u32 + 1)
-                            )
-                        );
-                        last_status_report = std::time::Instant::now();
                     }
                 }
 
-                log::debug!("Worker {} | DONE", tid,);
+                processed_bytes += sample.len();
 
-                expected_frequencies
-            })
-            .reduce(
-                || vec![0.0; model.vocab_size()],
-                |l, r| l.iter().zip(r).map(|(a, b)| a + b).collect(),
+                if last_status_report.elapsed().as_secs() >= 60 {
+                    log::debug!(
+                        "Worker {:>3} | {:>6}/{} samples | {:.3}MB/s",
+                        tid,
+                        i + 1,
+                        chunk.len(),
+                        mb_per_sec(processed_bytes, start),
+                    );
+
+                    last_status_report = std::time::Instant::now();
+                }
+            }
+
+            let merge_start = std::time::Instant::now();
+
+            // Merge the expected frequencies to the global expected frequencies
+            // through a mutex.
+            {
+                let mut acc_expected_frequencies = acc_expected_frequencies.write().unwrap();
+                for (acc, freq) in acc_expected_frequencies
+                    .iter_mut()
+                    .zip(expected_frequencies)
+                {
+                    *acc += freq;
+                }
+            }
+
+            log::debug!(
+                "Worker {:>3} | {:>6}/{} samples | {:>6.3}MB/s | merged in {:>3}ms | FINISHED",
+                tid,
+                chunk.len(),
+                chunk.len(),
+                mb_per_sec(processed_bytes, start),
+                merge_start.elapsed().as_millis(),
             );
+        });
 
-        expected_frequencies
+        acc_expected_frequencies.into_inner().unwrap()
     }
 
     /// Runs the M-step of the EM algorithm for the Unigram model. It computes

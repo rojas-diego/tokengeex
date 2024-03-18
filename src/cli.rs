@@ -57,6 +57,8 @@ mod flags {
                 optional --unigram-shrinking-factor unigram_shrinking_factor: f64
                 /// Number of sub-iterations for the EM algorithm.
                 optional --unigram-num-sub-iterations unigram_num_sub_iterations: usize
+                /// Whether to enable sample regularization.
+                optional --unigram-sample-regularization unigram_sample_regularization: bool
             }
 
             /// Encode text using a tokeniser.
@@ -281,6 +283,7 @@ fn train(
     // --- Unigram ---
     unigram_shrinking_factor: f64,
     unigram_num_sub_iterations: usize,
+    unigram_sample_regularization: bool,
 ) {
     assert!(
         train.len() > 0,
@@ -352,6 +355,7 @@ fn train(
                 vocab_size,
                 unigram_num_sub_iterations,
                 unigram_shrinking_factor,
+                unigram_sample_regularization,
             );
 
             let all_train_samples = train
@@ -433,6 +437,7 @@ fn main() {
                 // --- Unigram ---
                 flags.unigram_shrinking_factor.unwrap_or(0.75),
                 flags.unigram_num_sub_iterations.unwrap_or(2),
+                flags.unigram_sample_regularization.unwrap_or(false),
             );
         }
         flags::TokengeexCmd::Encode(flags) => {

@@ -1,3 +1,5 @@
+use fnv::FnvHashSet;
+
 use super::{ScoredToken, Unigram};
 use crate::{
     lattice::VecPool,
@@ -14,14 +16,21 @@ pub struct UnigramTrainer {
     vocab_size: usize,
     num_sub_iterations: usize,
     shrinking_factor: f64,
+    sample_regularization: bool,
 }
 
 impl UnigramTrainer {
-    pub fn new(vocab_size: usize, num_sub_iterations: usize, shrinking_factor: f64) -> Self {
+    pub fn new(
+        vocab_size: usize,
+        num_sub_iterations: usize,
+        shrinking_factor: f64,
+        sample_regularization: bool,
+    ) -> Self {
         Self {
             vocab_size,
             num_sub_iterations,
             shrinking_factor,
+            sample_regularization,
         }
     }
 
@@ -292,15 +301,24 @@ impl UnigramTrainer {
         // contain the token i.
         // This step computes the global frequency of each token and the list of
         // samples that contain each token.
-        let chunk_size = std::cmp::max(samples.len() / current_num_threads(), 1);
+        let chunk_size = std::cmp::max(samples.len() / current_num_threads() / 5, 1);
         let token_frequencies: Vec<usize> = samples
             .maybe_par_chunks(chunk_size)
             .map(|chunk| {
                 let mut freq: Vec<usize> = vec![0; vocab.len()];
+                let mut tokens_in_sample: FnvHashSet<usize> = FnvHashSet::default();
 
                 for sentence in chunk {
                     for id in model.encode(sentence)? {
-                        freq[id as usize] += 1;
+                        if self.sample_regularization {
+                            tokens_in_sample.insert(id as usize);
+                        } else {
+                            freq[id as usize] += 1;
+                        }
+                    }
+
+                    for id in tokens_in_sample.drain() {
+                        freq[id] += 1;
                     }
                 }
 

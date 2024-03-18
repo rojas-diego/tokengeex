@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-pub const STRICT_RE: &str = r#"(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:(?:(?:D|DU|DC|U|C) )|(?: ?(?:[0-9]+))|(?: ?(?:[a-z]+)))+$)"#;
+pub const STRICT_RE: &str = r#"(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:<D?[UC]? [a-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[0-9]+))|(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[a-z]+))){1,3}$)"#;
 pub const BASE_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
 pub const ADVANCED_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
 
@@ -236,8 +236,10 @@ mod tests {
         // A number or a word prefixed by a space.
         let _space_word_or_number = r#"(?: [a-z0-9]+)"#;
         // Many words, numbers and capcode.
-        let many_words_numbers_capcode =
-            format!("(?:{}|(?: ?{})|(?: ?{}))+", capcode, number, word);
+        let many_words_numbers_capcode = format!(
+            "(?:(?:(?:{}| )?{})|(?:(?:{}| )?{})){{1,3}}",
+            capcode, number, capcode, word
+        );
         // Any lowercase word with capcode.
         let capcode_word = format!("(?:{}{})", capcode, word);
         // Any lowercase word with delete capcode.
@@ -356,7 +358,9 @@ mod tests {
         // ---------------------------------------------------------------------
         // HTML
         // ---------------------------------------------------------------------
-        let html_tag_regex = Regex::new("^<D?[UC]? [a-z]+(?:>|/>| />)?$").unwrap();
+        let html_tag = r#"(?:<D?[UC]? [a-z]+(?:>|/>| />)?)"#;
+
+        let html_tag_regex = Regex::new(format!("^{}$", html_tag).as_str()).unwrap();
         println!("HTML Tag: {}", html_tag_regex);
         assert_regex_matches(
             &html_tag_regex,
@@ -424,6 +428,7 @@ mod tests {
         // - R or L punct with whitespace
         // - Chinese
         // - URLs
+        // - HTML tags
         let strict_regex = Regex::new(
             &[
                 ".",
@@ -432,6 +437,7 @@ mod tests {
                 &r_punct_whitespace,
                 &chinese,
                 &space_and_url,
+                &html_tag,
                 &many_words_numbers_capcode,
             ]
             .map(|re| format!("(?:^{}$)", re))
@@ -459,10 +465,18 @@ mod tests {
                 "\n}",
                 // Spaced URLs
                 " https://D grafana.D codegeex.D cn:D 8443",
+                // HTML
+                "<D div",
                 // Chinese
                 "我叫罗杰斯",
             ],
-            &["github ", "123 ", "https://github.com", "hello/"],
+            &[
+                "github ",
+                "123 ",
+                "https://github.com",
+                "hello/",
+                "more than three words bad",
+            ],
         );
     }
 

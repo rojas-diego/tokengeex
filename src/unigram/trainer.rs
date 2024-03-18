@@ -133,18 +133,30 @@ impl UnigramTrainer {
 
                     processed_bytes += sample.len();
 
-                    if last_status_report.elapsed().as_secs() >= 5 {
+                    fn format_duration(d: std::time::Duration) -> String {
+                        let seconds = d.as_secs() % 60;
+                        let minutes = (d.as_secs() / 60) % 60;
+                        let hours = (d.as_secs() / 60) / 60;
+                        format!("{:0>2}:{:0>2}:{:0>2}", hours, minutes, seconds)
+                    }
+
+                    if last_status_report.elapsed().as_secs() >= 60 {
                         log::debug!(
-                            "Worker {} | {:>6}/{} samples | {:.3}MB/s",
+                            "Worker {} | {:>6}/{} samples | {:.3}MB/s | {} ETA",
                             tid,
                             i,
                             chunk.len(),
                             (processed_bytes as f64 / 1024.0 / 1024.0)
-                                / start.elapsed().as_secs_f64()
+                                / start.elapsed().as_secs_f64(),
+                            format_duration(
+                                start.elapsed() * (chunk.len() as u32 - i as u32) / (i as u32 + 1)
+                            )
                         );
                         last_status_report = std::time::Instant::now();
                     }
                 }
+
+                log::debug!("Worker {} | DONE", tid,);
 
                 expected_frequencies
             })

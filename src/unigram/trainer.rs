@@ -8,7 +8,7 @@ use crate::{
     },
     Model, Result, Token, TokenID, MAX_TOKEN_LENGTH,
 };
-use std::{collections::HashSet, sync::RwLock, thread::ThreadId};
+use std::{collections::HashSet, sync::atomic::Ordering::Relaxed, sync::RwLock, thread::ThreadId};
 
 pub struct UnigramTrainer {
     vocab_size: usize,
@@ -106,6 +106,10 @@ impl UnigramTrainer {
             chunk_size
         );
 
+        let e_step_start = std::time::Instant::now();
+        let num_samples = samples.len();
+        let num_samples_processed = std::sync::atomic::AtomicUsize::new(0);
+
         samples.maybe_par_chunks(chunk_size).for_each(|chunk| {
             // For each sample, we iterate over snippets of max
             // `MAX_SAMPLE_LENGTH` bytes.
@@ -114,19 +118,16 @@ impl UnigramTrainer {
             let tid =
                 unsafe { std::mem::transmute::<ThreadId, usize>(std::thread::current().id()) };
             let start = std::time::Instant::now();
-            let mut last_status_report = std::time::Instant::now();
             let mut processed_bytes = 0;
             let mut expected_frequencies = vec![0.0; model.vocab.len()];
             let mut lattice = Lattice::default();
             let mut pool = VecPool::with_capacity(MAX_SAMPLE_LENGTH, 16);
 
-            log::debug!("Worker {:>3} | {:>6} samples | STARTING", tid, chunk.len());
-
             fn mb_per_sec(n: usize, since: std::time::Instant) -> f64 {
                 (n as f64 / 1024.0 / 1024.0) / since.elapsed().as_secs_f64()
             }
 
-            for (i, sample) in chunk.iter().enumerate() {
+            for sample in chunk {
                 for snippet in sample.as_bytes().chunks(MAX_SAMPLE_LENGTH) {
                     debug_assert!(!sample.is_empty(), "empty sample");
 
@@ -149,21 +150,8 @@ impl UnigramTrainer {
                 }
 
                 processed_bytes += sample.len();
-
-                if last_status_report.elapsed().as_secs() >= 60 {
-                    log::debug!(
-                        "Worker {:>3} | {:>6}/{} samples | {:.3}MB/s",
-                        tid,
-                        i + 1,
-                        chunk.len(),
-                        mb_per_sec(processed_bytes, start),
-                    );
-
-                    last_status_report = std::time::Instant::now();
-                }
+                num_samples_processed.fetch_add(1, Relaxed);
             }
-
-            let merge_start = std::time::Instant::now();
 
             // Merge the expected frequencies to the global expected frequencies
             // through a mutex.
@@ -177,13 +165,19 @@ impl UnigramTrainer {
                 }
             }
 
+            let total_samples_processed = num_samples_processed.load(Relaxed);
+            let percent_done = (total_samples_processed as f64 / num_samples as f64) * 100.0;
+            let eta =
+                (e_step_start.elapsed().as_secs_f64() / percent_done) * (100.0 - percent_done);
+
             log::debug!(
-                "Worker {:>3} | {:>6}/{} samples | {:>6.3}MB/s | merged in {:>3}ms | FINISHED",
+                "Worker {:>3} | ETA {:>5}s | {:>6.2}% | {:>5} samples in {:>3}s | {:>4.2}MB/s",
                 tid,
+                eta.round(),
+                percent_done,
                 chunk.len(),
-                chunk.len(),
+                start.elapsed().as_secs_f64() as usize,
                 mb_per_sec(processed_bytes, start),
-                merge_start.elapsed().as_millis(),
             );
         });
 

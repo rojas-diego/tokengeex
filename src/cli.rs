@@ -4,6 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs::{File, OpenOptions},
     io::Write,
+    sync::RwLock,
 };
 use tokengeex::{
     parallelism::MaybeParallelRefIterator, unigram, CapcodeProcessor, CrlfProcessor, Model,
@@ -449,13 +450,25 @@ fn evaluate(
     sources: &Vec<Source>,
     model: &unigram::Unigram,
 ) {
+    let token_frequencies = RwLock::new(vec![0; model.vocab_size()]);
     let mut characters_per_token = HashMap::new();
 
     for source in sources {
         let total_tokens = source
             .processed_samples
             .maybe_par_iter()
-            .map(|s| model.encode(s).unwrap().len())
+            .map(|s| {
+                let ids = model.encode(s).unwrap();
+
+                {
+                    let mut token_frequencies = token_frequencies.write().unwrap();
+                    ids.iter().for_each(|id| {
+                        token_frequencies[*id as usize] += 1;
+                    })
+                }
+
+                ids.len()
+            })
             .sum::<usize>();
 
         log::info!(
@@ -471,6 +484,25 @@ fn evaluate(
         );
     }
 
+    let mut token_frequencies = token_frequencies
+        .into_inner()
+        .unwrap()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    token_frequencies.sort_unstable();
+
+    let num_buckets = 25;
+    let bucket_capacity = token_frequencies.len() / num_buckets;
+    let mut percentile_buckets = vec![0usize; num_buckets];
+    let mut current_bucket;
+
+    for (i, &frequency) in token_frequencies.iter().enumerate() {
+        current_bucket = i / bucket_capacity;
+        current_bucket = current_bucket.min(num_buckets - 1);
+        percentile_buckets[current_bucket] += frequency;
+    }
+
     characters_per_token
         .iter_mut()
         .for_each(|(_, v)| *v = (*v * 100.0).round() / 100.0);
@@ -479,13 +511,17 @@ fn evaluate(
     struct Evaluation {
         epoch: usize,
         split: String,
+        vocab_size: usize,
         characters_per_token: HashMap<String, f64>,
+        token_frequency_buckets: Vec<usize>,
     }
 
     let evaluation = Evaluation {
         epoch,
         split: split.into(),
+        vocab_size: model.vocab_size(),
         characters_per_token,
+        token_frequency_buckets: percentile_buckets,
     };
 
     logfile.write(&evaluation);

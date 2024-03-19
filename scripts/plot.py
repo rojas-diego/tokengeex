@@ -146,7 +146,7 @@ def plot_freq(args, data):
 
     # Save the plot
     if args.freq:
-        plt.savefig(args.frequencies_output, dpi=300)
+        plt.savefig(args.freq, dpi=300)
     else:
         plt.show()
 

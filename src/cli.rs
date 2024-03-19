@@ -492,7 +492,7 @@ fn evaluate(
 
     token_frequencies.sort_unstable();
 
-    let num_buckets = 25;
+    let num_buckets = 50;
     let bucket_capacity = token_frequencies.len() / num_buckets;
     let mut percentile_buckets = vec![0usize; num_buckets];
     let mut current_bucket;

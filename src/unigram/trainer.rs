@@ -74,11 +74,23 @@ impl UnigramTrainer {
 
         if model.vocab_size() <= desired_vocab_size {
             // Finally, adjusts the size of sentencepices to be |vocab_size|.
+            log::info!(
+                "Finalizing model | vocab_size={} desired_vocab_size={}",
+                model.vocab_size(),
+                desired_vocab_size
+            );
+
             *model = self.finalize(model);
 
             Ok(false)
         } else {
             // Prunes pieces.
+            log::info!(
+                "Pruning model | vocab_size={} desired_vocab_size={}",
+                model.vocab_size(),
+                desired_vocab_size
+            );
+
             *model = Unigram::from(self.prune_vocab(model, model.vocab(), samples, keep)?);
 
             Ok(true)
@@ -301,11 +313,13 @@ impl UnigramTrainer {
             }
         }
 
+        log::info!("Computing frequencies");
+
         // For a token ID i, inverted[i] stores the list of sentence IDs that
         // contain the token i.
         // This step computes the global frequency of each token and the list of
         // samples that contain each token.
-        let chunk_size = std::cmp::max(samples.len() / current_num_threads() / 5, 1);
+        let chunk_size = std::cmp::max(samples.len() / current_num_threads() / 10, 1);
         let token_frequencies: Vec<usize> = samples
             .maybe_par_chunks(chunk_size)
             .map(|chunk| {
@@ -344,6 +358,8 @@ impl UnigramTrainer {
                     Ok(l.iter().zip(r).map(|(a, b)| a + b).collect())
                 },
             )?;
+
+        log::info!("Compute model loss based on the frequencies");
 
         let sum_token_frequencies = token_frequencies.iter().sum::<usize>() as f64;
         let logsum_token_frequencies = (sum_token_frequencies as f64).ln();
@@ -397,6 +413,8 @@ impl UnigramTrainer {
                 candidates.push((id, loss));
             }
         }
+
+        log::info!("Updating vocabulary");
 
         let desired_vocab_size: usize = (self.vocab_size * 11) / 10; // * 1.1
         let pruned_size: usize = ((vocab.len() as f64) * self.shrinking_factor) as usize;

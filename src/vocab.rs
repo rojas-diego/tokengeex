@@ -7,9 +7,8 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-pub const STRICT_RE: &str = r#"(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:</?D?[UC]? [a-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[0-9]+))|(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[a-z]+))){1,3}$)"#;
-pub const BASE_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
-pub const ADVANCED_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
+pub const BASE_RE: &str = r#"(?:^.$)|(?:^(?:[[:punct:]](?:(?:[A-Za-z']+)|(?:[0-9]{1,4})))$)|(?:^(?:(?:(?:[A-Za-z']+)|(?:[0-9]{1,4}))[[:punct:]])$)|(?:^(?:(?:[ [:punct:]]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[ [:punct:]]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?:(?:[a-z]+)://(?:(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*)(?:\.(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*))*)(?:\.(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}))?(?::[0-9]{1,5})?)$)|(?:^(?:</? ?[A-Za-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))?(?:(?:[_-]+)(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))*(?:[_-]*))$)|(?:^(?: ?(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))$)|(?:^(?: ?(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))(?: (?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))){1,3}))$)"#;
+pub const CAPCODE_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
 
 pub struct VocabularyGenerator {
     max_token_length: usize,
@@ -218,7 +217,7 @@ mod tests {
         // Basic
         // ---------------------------------------------------------------------
         // Any word.
-        let word = r#"(?:[A-Za-z]+)"#;
+        let word = r#"(?:[A-Za-z']+)"#;
         // Any sequence of Chinese characters.
         let chinese = r#"(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)"#;
         // Small number (max 4 digits).
@@ -271,7 +270,7 @@ mod tests {
                 "var name-",
                 "var name_",
                 "var12345",
-                "9645039277113275",
+                "12345",
             ],
         );
 
@@ -279,23 +278,15 @@ mod tests {
         // Text
         // ---------------------------------------------------------------------
         // Space separated valid camel case variable.
-        let space_multi_camel = format!("(?:(?: ?{}){{1,3}})", camel_var_name);
+        let space_multi_camel =
+            format!("(?: ?(?:{}(?: {}){{1,3}}))", camel_var_name, camel_var_name);
 
         let space_word_or_number_regex = Regex::new(&format!("^{}$", space_multi_camel)).unwrap();
         println!("Space word or number: {}", space_word_or_number_regex);
         assert_regex_matches(
             &space_word_or_number_regex,
-            &[
-                "word",
-                " word",
-                "123",
-                " 123",
-                "word123",
-                " word123",
-                "word 123",
-                "word 123 123",
-            ],
-            &["word 123 123 123", "word 123 "],
+            &[" two words", "word 123", "word word123 123"],
+            &["word 123 123 123 123", "word 123 ", "12345"],
         );
 
         // ---------------------------------------------------------------------
@@ -351,7 +342,7 @@ mod tests {
         // HTML
         // ---------------------------------------------------------------------
         // HTML tag.
-        let html_tag = r#"(?:< ?[A-Za-z]+(?:>|/>| />)?)"#;
+        let html_tag = r#"(?:</? ?[A-Za-z]+(?:>|/>| />)?)"#;
 
         let html_tag_regex = Regex::new(&format!("^{}$", html_tag)).unwrap();
         println!("HTML Tag: {}", html_tag_regex);
@@ -372,6 +363,8 @@ mod tests {
         let r_punct_whitespace = format!("(?:[[:space:]]*{}?)", many_punct);
         // Word that begins with punctuation.
         let word_lpunct = format!("(?:[[:punct:]]{})", word_or_small_number);
+        // Word that ends with punctuation.
+        let word_rpunct = format!("(?:{}[[:punct:]])", word_or_small_number);
 
         let word_lpunct_regex = Regex::new(&format!("^{}$", word_lpunct)).unwrap();
         println!("Word with R punctuation: {}", word_lpunct_regex);
@@ -404,9 +397,8 @@ mod tests {
         );
 
         // ---------------------------------------------------------------------
-        // STRICT
+        // BASE
         // ---------------------------------------------------------------------
-        // The strict regex allows the following patterns:
         // - Lone characters
         // - Word
         // - Numbers
@@ -415,44 +407,73 @@ mod tests {
         // - Chinese
         // - URLs
         // - HTML tags
-        let strict_regex = Regex::new(
+        let base_regex = Regex::new(
             &[
                 ".",
                 &word_lpunct,
+                &word_rpunct,
                 &l_punct_whitespace,
                 &r_punct_whitespace,
                 &chinese,
                 &url,
                 &html_tag,
+                &snake_var_name,
+                &format!("(?: ?{})", camel_var_name),
                 &space_multi_camel,
             ]
             .map(|re| format!("(?:^{}$)", re))
             .join("|"),
         )
         .unwrap();
-        println!("Strict: {}", strict_regex);
+        println!("BASE: {}", base_regex);
         assert_regex_matches(
-            &strict_regex,
+            &base_regex,
             &[
+                // Basic words
                 "word",
-                "123",
-                "-WORD",
-                " . ",
-                " .",
-                " . / ^ \t\n",
-                "你好",
-                "<div>",
                 " word",
-                " multiple words",
-                " 123",
+                "two words",
+                " two words",
+                "don't",
+                " isn't",
+                "'a",
+                // Numbers
+                "123",
+                // Variable names
+                "_123",
+                "_word",
+                "word_",
+                "snake_case",
+                "camelCase",
+                "camel123Case",
+                // Word punctuation
+                ".word",
+                "-123",
+                "word.",
+                "123-",
+                // Punctuation
                 " . ",
                 " .",
                 " . / ^ \t\n",
-                "好",
-                "https://github.world.com",
+                "            ",
+                "\n\n\n",
+                // Chinese
+                "你好",
+                // HTML
                 "<div>",
+                "<Type>",
+                "</div>",
+                // URLs
+                "https://github.world.com",
             ],
-            &["word ", "123 ", "WORD-", "WORD_", "github.world.com"],
+            &[
+                "word ",
+                "word_ ",
+                "123 ",
+                "github.world.com",
+                "12345",
+                "hello12345",
+            ],
         );
     }
 
@@ -660,9 +681,8 @@ mod tests {
         );
 
         // ---------------------------------------------------------------------
-        // STRICT
+        // CAPCODE
         // ---------------------------------------------------------------------
-        // The strict regex allows the following patterns:
         // - Lone characters
         // - Words
         // - Numbers
@@ -673,7 +693,7 @@ mod tests {
         // - Chinese
         // - URLs
         // - HTML tags
-        let strict_regex = Regex::new(
+        let capcode_regex = Regex::new(
             &[
                 ".",
                 &word_lpunct,
@@ -688,9 +708,9 @@ mod tests {
             .join("|"),
         )
         .unwrap();
-        println!("Strict: {}", strict_regex);
+        println!("CAPCODE: {}", capcode_regex);
         assert_regex_matches(
-            &strict_regex,
+            &capcode_regex,
             &[
                 // Capcode
                 "DC ",
@@ -722,66 +742,5 @@ mod tests {
                 "more than three words bad",
             ],
         );
-    }
-
-    #[test]
-    fn test_regexes() {
-        let strict: u8 = 4;
-        let base: u8 = 2;
-        let advanced: u8 = 1;
-        let none: u8 = 0;
-        let all: u8 = strict | base | advanced;
-
-        // An array of samples and whether it is a valid token for each
-        // configuration.
-        // ({token}, {bit_mask})
-        let samples = [
-            ("word", all),
-            (" word", all),
-            ("word ", none),
-            ("two words", all),
-            (" in order to", all),
-            ("123", all),
-            (" 456", all),
-            ("789 ", none),
-            ("好", all),
-            ("你好", all),
-            ("我叫罗杰斯", all),
-            ("DC complexDU casingD 123", all),
-            ("1.D 0", base | advanced),
-            (" 2.D 0", base | advanced),
-            (" 150.D 0", base | advanced),
-            (" 4.D 95", base | advanced),
-            (" users_D table", base | advanced),
-            ("1.D 0", base | advanced),
-            ("D https://D github.D com", advanced),
-            ("<D a>", all),
-            ("<DU a", all),
-            ("<D a/>", all),
-            ("<D a />", all),
-        ];
-
-        let regexes = [
-            ("strict", Regex::new(STRICT_RE).unwrap(), strict),
-            ("base", Regex::new(BASE_RE).unwrap(), base),
-            ("advanced", Regex::new(ADVANCED_RE).unwrap(), advanced),
-        ];
-
-        for (token, token_mask) in samples.iter() {
-            for (name, re, re_mask) in regexes.iter() {
-                let should_match: bool = (token_mask & re_mask) != 0;
-                assert!(
-                    re.is_match(token) == should_match,
-                    "Expected {:?} {}to match {} Regex ({:?}",
-                    token,
-                    match should_match {
-                        false => "not ",
-                        true => "",
-                    },
-                    name,
-                    re
-                );
-            }
-        }
     }
 }

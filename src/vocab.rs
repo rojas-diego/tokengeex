@@ -219,39 +219,69 @@ mod tests {
         // ---------------------------------------------------------------------
         // Any word.
         let word = r#"(?:[A-Za-z]+)"#;
-        // Any number.
-        let _number = r#"(?:[0-9]+)"#;
         // Any sequence of Chinese characters.
         let chinese = r#"(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)"#;
-        // Small number (max 3 digits).
-        let _small_number = r#"(?:[0-9]{1,3})"#;
+        // Small number (max 4 digits).
+        let small_number = r#"(?:[0-9]{1,4})"#;
         // Any number or word.
-        let word_or_number = r#"(?:[A-Za-z0-9]+)"#;
+        let word_or_small_number = format!("(?:{}|{})", word, small_number);
 
         // ---------------------------------------------------------------------
         // Coding
         // ---------------------------------------------------------------------
-        // Any variable name. (underscore, hyphens, camel case)
-        let variable_name = r#"(?:[a-zA-Z0-9_\-]+)"#;
+        // Camel case variable.
+        let camel_var_name = format!(
+            "(?:(?:{}|(?:{}(?:{}{})*{}?)))",
+            small_number, word, small_number, word, small_number
+        );
+        // Snake case variable.
+        let snake_var_name = format!(
+            "(?:{}?(?:(?:[_-]+){})*(?:[_-]*))",
+            camel_var_name, camel_var_name
+        );
 
-        let variable_name_regex = Regex::new(&format!("^{}$", variable_name)).unwrap();
-        println!("Variable name: {}", variable_name_regex);
+        let camel_var_name_regex = Regex::new(&format!("^{}$", camel_var_name)).unwrap();
+        println!("Camel case variable: {}", camel_var_name_regex);
         assert_regex_matches(
-            &variable_name_regex,
+            &camel_var_name_regex,
             &[
-                "var", "var_name", "var-name", "varName", "var123", "var-123",
+                "123",
+                "var",
+                "varName",
+                "varName123",
+                "varName123var",
+                "varName123var123",
+                "varName123var123var",
+                "varName123var123var123",
             ],
-            &["var name", "var name ", "var name-", "var name_"],
+            &["12345", "var12345", ""],
+        );
+
+        let snake_case_regex = Regex::new(&format!("^{}$", snake_var_name)).unwrap();
+        println!("Snake case variable: {}", snake_case_regex);
+        assert_regex_matches(
+            &snake_case_regex,
+            &[
+                "vars", "var_name", "var-name", "varName", "myVar123", "var-123", "u32", "size_t",
+                "uint64_t",
+            ],
+            &[
+                "var name",
+                "var name ",
+                "var name-",
+                "var name_",
+                "var12345",
+                "9645039277113275",
+            ],
         );
 
         // ---------------------------------------------------------------------
         // Text
         // ---------------------------------------------------------------------
-        // Space word or number.
-        let space_word_or_number = r#"(?:(?: ?[a-zA-Z0-9]+){1,3})"#;
+        // Space separated valid camel case variable.
+        let space_multi_camel = format!("(?:(?: ?{}){{1,3}})", camel_var_name);
 
-        let space_word_or_number_regex =
-            Regex::new(&format!("^{}$", space_word_or_number)).unwrap();
+        let space_word_or_number_regex = Regex::new(&format!("^{}$", space_multi_camel)).unwrap();
         println!("Space word or number: {}", space_word_or_number_regex);
         assert_regex_matches(
             &space_word_or_number_regex,
@@ -265,7 +295,7 @@ mod tests {
                 "word 123",
                 "word 123 123",
             ],
-            &["word 123 123 123", "word 123 ", "word 123 123 123 123"],
+            &["word 123 123 123", "word 123 "],
         );
 
         // ---------------------------------------------------------------------
@@ -341,7 +371,7 @@ mod tests {
         // R punctuation with whitespace.
         let r_punct_whitespace = format!("(?:[[:space:]]*{}?)", many_punct);
         // Word that begins with punctuation.
-        let word_lpunct = format!("(?:[[:punct:]]{})", word_or_number);
+        let word_lpunct = format!("(?:[[:punct:]]{})", word_or_small_number);
 
         let word_lpunct_regex = Regex::new(&format!("^{}$", word_lpunct)).unwrap();
         println!("Word with R punctuation: {}", word_lpunct_regex);
@@ -394,7 +424,7 @@ mod tests {
                 &chinese,
                 &url,
                 &html_tag,
-                &space_word_or_number,
+                &space_multi_camel,
             ]
             .map(|re| format!("(?:^{}$)", re))
             .join("|"),

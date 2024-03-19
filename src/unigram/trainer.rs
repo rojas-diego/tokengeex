@@ -402,7 +402,7 @@ impl UnigramTrainer {
         let pruned_size: usize = ((vocab.len() as f64) * self.shrinking_factor) as usize;
         let pruned_size = desired_vocab_size.max(pruned_size);
 
-        candidates.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
+        candidates.sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
 
         for (id, _) in candidates {
             if pruned_vocab.len() == pruned_size {
@@ -425,7 +425,7 @@ impl UnigramTrainer {
             }
         }
 
-        vocab.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
+        vocab.sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
 
         Unigram::from(vocab)
     }

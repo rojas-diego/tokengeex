@@ -450,8 +450,15 @@ fn evaluate(
     sources: &Vec<Source>,
     model: &unigram::Unigram,
 ) {
+    #[derive(Serialize, Clone)]
+    struct Compression {
+        num_tokens: usize,
+        num_chars: usize,
+        chars_per_token: f64,
+    }
+
     let token_frequencies = RwLock::new(vec![0; model.vocab_size()]);
-    let mut characters_per_token = HashMap::new();
+    let mut compression = HashMap::new();
 
     for source in sources {
         let total_tokens = source
@@ -471,16 +478,24 @@ fn evaluate(
             })
             .sum::<usize>();
 
+        let chars_per_token =
+            ((source.total_chars as f64 / total_tokens as f64) * 100.0).round() / 100.0;
+
+        let compression_for_source = Compression {
+            num_chars: source.total_chars,
+            num_tokens: total_tokens,
+            chars_per_token,
+        };
+
+        compression.insert(source.name.clone(), compression_for_source.clone());
+
         log::info!(
-            "{} {:?} | {:.2}",
+            "{:<5} {:>8?} | {:>9} chars | {:>9} tokens | {:>4} chars per token",
             split,
             source.name,
-            source.total_chars as f64 / total_tokens as f64,
-        );
-
-        characters_per_token.insert(
-            source.name.clone(),
-            source.total_chars as f64 / total_tokens as f64,
+            compression_for_source.num_chars,
+            compression_for_source.num_tokens,
+            compression_for_source.chars_per_token,
         );
     }
 
@@ -489,39 +504,34 @@ fn evaluate(
         .unwrap()
         .into_iter()
         .collect::<Vec<_>>();
-
-    token_frequencies.sort_unstable();
+    token_frequencies.sort_unstable_by(|a, b| b.cmp(a));
 
     let num_buckets = 50;
     let bucket_capacity = token_frequencies.len() / num_buckets;
-    let mut percentile_buckets = vec![0usize; num_buckets];
+    let mut frequency_buckets = vec![0usize; num_buckets];
     let mut current_bucket;
 
     for (i, &frequency) in token_frequencies.iter().enumerate() {
         current_bucket = i / bucket_capacity;
         current_bucket = current_bucket.min(num_buckets - 1);
-        percentile_buckets[current_bucket] += frequency;
+        frequency_buckets[current_bucket] += frequency;
     }
-
-    characters_per_token
-        .iter_mut()
-        .for_each(|(_, v)| *v = (*v * 100.0).round() / 100.0);
 
     #[derive(Serialize)]
     struct Evaluation {
         epoch: usize,
         split: String,
         vocab_size: usize,
-        characters_per_token: HashMap<String, f64>,
-        token_frequency_buckets: Vec<usize>,
+        compression: HashMap<String, Compression>,
+        frequency_buckets: Vec<usize>,
     }
 
     let evaluation = Evaluation {
         epoch,
         split: split.into(),
         vocab_size: model.vocab_size(),
-        characters_per_token,
-        token_frequency_buckets: percentile_buckets,
+        compression,
+        frequency_buckets,
     };
 
     logfile.write(&evaluation);

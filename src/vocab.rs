@@ -114,7 +114,7 @@ impl VocabularyGenerator {
 
         // Convert the tokens to a vector and sort them by frequency.
         let mut frequent_tokens: Vec<_> = frequent_tokens.into_iter().collect();
-        frequent_tokens.sort_by_key(|(_, freq)| Reverse(*freq));
+        frequent_tokens.sort_unstable_by_key(|(_, freq)| Reverse(*freq));
 
         // Keep track of duplicates, ensuring the earlier occurrence is kept.
         let mut seen: HashSet<&str> = HashSet::new();
@@ -168,7 +168,7 @@ impl VocabularyGenerator {
         }
 
         // Sort the vocabulary by score.
-        vocab.sort_by(|(_, a), (_, b)| {
+        vocab.sort_unstable_by(|(_, a), (_, b)| {
             a.partial_cmp(b)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .reverse()

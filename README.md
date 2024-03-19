@@ -103,7 +103,6 @@ RUST_LOG=debug tokengeex train --model 'unigram' \
     --vocab-size 131072 \
     --processor 'nfc' \
     --processor 'crlf' \
-    --processor 'capcode' \
     --initial-vocab-max-token-length 32 \
     --initial-vocab-size 10000000 \
     --initial-vocab-insert-probability 0.01 \

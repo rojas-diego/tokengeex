@@ -1,5 +1,3 @@
-use fnv::FnvHashSet;
-
 use super::{ScoredToken, Unigram};
 use crate::{
     lattice::VecPool,
@@ -12,11 +10,17 @@ use crate::{
 };
 use std::{collections::HashSet, sync::atomic::Ordering::Relaxed, sync::RwLock, thread::ThreadId};
 
+pub enum SampleRegularization {
+    None,
+    Log,
+    Constant,
+}
+
 pub struct UnigramTrainer {
     vocab_size: usize,
     num_sub_iterations: usize,
     shrinking_factor: f64,
-    sample_regularization: bool,
+    sample_regularization: SampleRegularization,
 }
 
 impl UnigramTrainer {
@@ -24,7 +28,7 @@ impl UnigramTrainer {
         vocab_size: usize,
         num_sub_iterations: usize,
         shrinking_factor: f64,
-        sample_regularization: bool,
+        sample_regularization: SampleRegularization,
     ) -> Self {
         Self {
             vocab_size,
@@ -305,24 +309,32 @@ impl UnigramTrainer {
         let token_frequencies: Vec<usize> = samples
             .maybe_par_chunks(chunk_size)
             .map(|chunk| {
-                let mut freq: Vec<usize> = vec![0; vocab.len()];
-                let mut tokens_in_sample: FnvHashSet<usize> = FnvHashSet::default();
+                let mut frequencies: Vec<usize> = vec![0; vocab.len()];
+                let mut sample_frequencies: Vec<usize> = vec![0; vocab.len()];
 
                 for sentence in chunk {
                     for id in model.encode(sentence)? {
-                        if self.sample_regularization {
-                            tokens_in_sample.insert(id as usize);
-                        } else {
-                            freq[id as usize] += 1;
-                        }
+                        sample_frequencies[id as usize] += 1;
                     }
 
-                    for id in tokens_in_sample.drain() {
-                        freq[id] += 1;
+                    for (i, freq) in sample_frequencies.iter_mut().enumerate() {
+                        match self.sample_regularization {
+                            SampleRegularization::None => {
+                                frequencies[i] += *freq;
+                            }
+                            SampleRegularization::Log => {
+                                frequencies[i] += (*freq as f64).log2().round() as usize;
+                            }
+                            SampleRegularization::Constant => {
+                                frequencies[i] = 1;
+                            }
+                        }
+
+                        *freq = 0;
                     }
                 }
 
-                Ok(freq)
+                Ok(frequencies)
             })
             .reduce(
                 || Ok(vec![0; vocab.len()]),

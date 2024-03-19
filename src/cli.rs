@@ -1,5 +1,10 @@
 use memmap2::Mmap;
-use std::collections::HashSet;
+use serde::Serialize;
+use std::{
+    collections::{HashMap, HashSet},
+    fs::{File, OpenOptions},
+    io::Write,
+};
 use tokengeex::{
     parallelism::MaybeParallelRefIterator, unigram, CapcodeProcessor, CrlfProcessor, Model,
     Processor, ProcessorWrapper, Tokenizer, UnicodeProcessor, VocabularyGenerator,
@@ -17,14 +22,13 @@ mod flags {
                 required -o, --output output: String
                 /// Desired vocabulary size.
                 required -v, --vocab-size vocab_size: usize
+                /// Log filepath.
+                required -l, --logfile logfile: String
 
                 // --- Data ---
                 /// List of source files to train the tokenizer on. Must be
                 /// formatted according to {name}:{path}.
                 repeated --train input: String
-                /// List of source files to validate the tokenizer on. Must be
-                /// formatted according to {name}:{path}.
-                repeated --valid valid: String
                 /// List of source files to test the tokenizer on. Must be
                 /// formatted according to {name}:{path}.
                 repeated --test test: String
@@ -57,8 +61,9 @@ mod flags {
                 optional --unigram-shrinking-factor unigram_shrinking_factor: f64
                 /// Number of sub-iterations for the EM algorithm.
                 optional --unigram-num-sub-iterations unigram_num_sub_iterations: usize
-                /// Whether to enable sample regularization.
-                optional --unigram-sample-regularization unigram_sample_regularization: bool
+                /// What kind of sample regularization to employ. Choices are
+                /// "none", "log" or "constant". Defaults to "none".
+                optional --unigram-sample-regularization unigram_sample_regularization: String
             }
 
             /// Encode text using a tokeniser.
@@ -177,8 +182,8 @@ struct Source {
     pub name: String,
     pub processed_samples: Vec<String>,
     #[allow(dead_code)]
-    pub processed_total_bytes: usize,
     pub total_bytes: usize,
+    pub total_chars: usize,
     #[allow(dead_code)]
     pub mmap: Mmap,
 }
@@ -217,6 +222,7 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper]) -> Vec<Sour
                 .collect();
 
             let total_bytes = samples.iter().map(|s| s.len()).sum::<usize>();
+            let total_chars = samples.iter().map(|s| s.chars().count()).sum::<usize>();
 
             let processed_samples: Vec<String> = samples
                 .iter()
@@ -246,8 +252,8 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper]) -> Vec<Sour
             Source {
                 name: name.to_string(),
                 processed_samples,
-                processed_total_bytes,
                 total_bytes,
+                total_chars,
                 mmap,
             }
         })
@@ -258,6 +264,35 @@ fn format_bytes_as_mb(bytes: u64) -> String {
     format!("{:.2}MB", bytes as f64 / 1_000_000.0)
 }
 
+struct FileLogger {
+    file: File,
+}
+
+impl FileLogger {
+    pub fn new(filepath: &str) -> Self {
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(filepath)
+            .unwrap_or_else(|e| panic!("Failed to create {:?}: {:?}", filepath, e));
+
+        Self { file }
+    }
+
+    /// Write a serializable to the file as JSON.
+    pub fn write<T: Serialize>(&mut self, data: &T) {
+        let mut json =
+            serde_json::to_string(data).unwrap_or_else(|e| panic!("Failed to serialize: {:?}", e));
+
+        json.push('\n');
+
+        self.file.write_all(json.as_bytes()).unwrap_or_else(|e| {
+            panic!("Failed to write to {:?}: {:?}", self.file, e);
+        });
+    }
+}
+
 /// Train a new tokeniser from data.
 #[allow(clippy::too_many_arguments)]
 fn train(
@@ -265,9 +300,9 @@ fn train(
     model: &str,
     output: &str,
     vocab_size: usize,
+    logfile: &str,
     // --- Data ---
     train: &Vec<String>,
-    valid: &Vec<String>,
     test: &Vec<String>,
     // --- Processing ---
     processors: &Vec<String>,
@@ -283,12 +318,16 @@ fn train(
     // --- Unigram ---
     unigram_shrinking_factor: f64,
     unigram_num_sub_iterations: usize,
-    unigram_sample_regularization: bool,
+    unigram_sample_regularization: &str,
 ) {
     assert!(
         train.len() > 0,
         "At least one training dataset must be provided"
     );
+
+    log::info!("Writing logs to {:?}.", logfile);
+
+    let mut logfile = FileLogger::new(logfile);
 
     let processors = load_processors(processors);
     let added_tokens = load_tokens_files(added_tokens_files, "added");
@@ -301,7 +340,6 @@ fn train(
     );
 
     let train = load_sources(&train, &processors);
-    let valid = load_sources(&valid, &processors);
     let test = load_sources(&test, &processors);
 
     log::info!(
@@ -348,14 +386,28 @@ fn train(
                 format_bytes_as_mb(vocab_total_bytes as u64)
             );
 
-            log::info!("Training unigram model.");
             let mut model = unigram::Unigram::from(vocab);
 
+            log::info!(
+                "Training unigram model. vocab_size={} shrinking_factor={} num_sub_iterations={} sample_regularization={:?}",
+                vocab_size,
+                unigram_shrinking_factor,
+                unigram_num_sub_iterations,
+                unigram_sample_regularization
+            );
             let mut trainer = unigram::UnigramTrainer::new(
                 vocab_size,
                 unigram_num_sub_iterations,
                 unigram_shrinking_factor,
-                unigram_sample_regularization,
+                match unigram_sample_regularization {
+                    "none" => unigram::SampleRegularization::None,
+                    "log" => unigram::SampleRegularization::Log,
+                    "consant" => unigram::SampleRegularization::Constant,
+                    _ => panic!(
+                        "Invalid sample regularization: {:?}",
+                        unigram_sample_regularization
+                    ),
+                },
             );
 
             let all_train_samples = train
@@ -373,13 +425,11 @@ fn train(
                     .train(&mut model, &all_train_samples, &keep)
                     .unwrap();
 
-                evaluate("TRAIN", &train, &model);
-                evaluate("VALID", &valid, &model);
+                evaluate(&mut logfile, "train", epoch, &train, &model);
+                evaluate(&mut logfile, "test", epoch, &test, &model);
 
                 epoch += 1;
             }
-
-            evaluate("TEST", &test, &model);
 
             log::info!("Training finished. Writing to {:?}.", output);
 
@@ -392,7 +442,15 @@ fn train(
     }
 }
 
-fn evaluate(split: &str, sources: &Vec<Source>, model: &unigram::Unigram) {
+fn evaluate(
+    logfile: &mut FileLogger,
+    split: &str,
+    epoch: usize,
+    sources: &Vec<Source>,
+    model: &unigram::Unigram,
+) {
+    let mut characters_per_token = HashMap::new();
+
     for source in sources {
         let total_tokens = source
             .processed_samples
@@ -404,9 +462,33 @@ fn evaluate(split: &str, sources: &Vec<Source>, model: &unigram::Unigram) {
             "{} {:?} | {:.2}",
             split,
             source.name,
-            source.total_bytes as f64 / total_tokens as f64,
+            source.total_chars as f64 / total_tokens as f64,
+        );
+
+        characters_per_token.insert(
+            source.name.clone(),
+            source.total_chars as f64 / total_tokens as f64,
         );
     }
+
+    characters_per_token
+        .iter_mut()
+        .for_each(|(_, v)| *v = (*v * 100.0).round() / 100.0);
+
+    #[derive(Serialize)]
+    struct Evaluation {
+        epoch: usize,
+        split: String,
+        characters_per_token: HashMap<String, f64>,
+    }
+
+    let evaluation = Evaluation {
+        epoch,
+        split: split.into(),
+        characters_per_token,
+    };
+
+    logfile.write(&evaluation);
 }
 
 fn main() {
@@ -419,9 +501,9 @@ fn main() {
                 &flags.model,
                 &flags.output,
                 flags.vocab_size,
+                &flags.logfile,
                 // --- Data ---
                 &flags.train,
-                &flags.valid,
                 &flags.test,
                 // --- Processing ---
                 &flags.processor,
@@ -437,7 +519,7 @@ fn main() {
                 // --- Unigram ---
                 flags.unigram_shrinking_factor.unwrap_or(0.75),
                 flags.unigram_num_sub_iterations.unwrap_or(2),
-                flags.unigram_sample_regularization.unwrap_or(false),
+                &flags.unigram_sample_regularization.unwrap_or("none".into()),
             );
         }
         flags::TokengeexCmd::Encode(flags) => {

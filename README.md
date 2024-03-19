@@ -77,20 +77,21 @@ Here's the full command used to train vocabularies.
 ```shell
 RUST_LOG=debug TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=96 tokengeex train --model 'unigram' \
     --output 'strict-65k.json' \
+    --logfile 'strict-65k.log' \
     --vocab-size 65536 \
-    --processor nfc \
-    --processor crlf \
-    --processor capcode \
+    --processor 'nfc' \
+    --processor 'crlf' \
+    --processor 'capcode' \
     --initial-vocab-max-token-length 32 \
     --initial-vocab-size 5000000 \
     --initial-vocab-insert-probability 0.01 \
     --initial-vocab-allow '(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:<D?[UC]? [a-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[0-9]+))|(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[a-z]+))){1,3}$)' \
     --unigram-shrinking-factor 0.8 \
     --unigram-num-sub-iterations 2 \
-    --unigram-sample-regularization true \
-    --suggested-tokens-file ./hub/tokens/suggested.json \
-    --added-tokens-file ./hub/tokens/added.json \
-    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --valid ${lang}:./hub/data/valid/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
+    --unigram-sample-regularization 'log' \
+    --suggested-tokens-file './hub/tokens/suggested.json' \
+    --added-tokens-file './hub/tokens/added.json' \
+    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
 ```
 
 ### Configurations

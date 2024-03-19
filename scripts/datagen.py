@@ -15,10 +15,8 @@ def mb(size: float) -> int:
 
 
 def generate_the_stack(args, lang, quota):
-    (train, valid, test) = quota
-    print(
-        f"Generating ({train / mb(1)} MB, {valid / mb(1)} MB, {test / mb(1)} MB) for {lang}"
-    )
+    (train, test) = quota
+    print(f"Generating ({train / mb(1)} MB, {test / mb(1)} MB) for {lang}")
 
     the_stack = datasets.load_dataset(
         "bigcode/the-stack-dedup",
@@ -27,14 +25,14 @@ def generate_the_stack(args, lang, quota):
         streaming=True,
     )
 
-    for split in ["train", "valid", "test"]:
+    for split in ["train", "test"]:
         os.makedirs(f"{args.output}/{split}", exist_ok=True)
 
     written = 0
-    files = [
-        open(f"{args.output}/{split}/{lang}.bin", "wb")
-        for split in ["train", "valid", "test"]
-    ]
+    files = {
+        split: open(f"{args.output}/{split}/{lang}.bin", "wb")
+        for split in ["train", "test"]
+    }
 
     for sample in the_stack:
         (
@@ -55,11 +53,7 @@ def generate_the_stack(args, lang, quota):
         if lang not in [
             "cuda",
             "cmake",
-            "llvm",
-            "matlab",
-            "nginx",
             "elixir",
-            "jupyter-notebook",
             "perl",
             "toml",
             "hcl",
@@ -74,11 +68,9 @@ def generate_the_stack(args, lang, quota):
                 continue
 
         if written < test:
-            f = files[2]
-        elif written < test + valid:
-            f = files[1]
-        elif written < test + valid + train:
-            f = files[0]
+            f = files["test"]
+        elif written < test + train:
+            f = files["train"]
         else:
             break
 
@@ -87,32 +79,30 @@ def generate_the_stack(args, lang, quota):
         f.write(b"\0")
         written += len(encoded) + 1
 
-    for f in files:
+    for f in files.values():
         f.close()
 
-    print(f"Wrote {written}/{train + valid + test} for {lang} to {args.output}")
+    print(f"Wrote {written}/{train + test} for {lang} to {args.output}")
 
 
 def generate_chinese_markdown(args):
-    train, valid, test = map(
+    train, test = map(
         lambda x: int(x * (1024**2)), map(float, args.chinese_markdown_quota.split(","))
     )
 
-    print(
-        f"Generating ({train / mb(1)} MB, {valid / mb(1)} MB, {test / mb(1)} MB) for Chinese Markdown"
-    )
+    print(f"Generating ({train / mb(1)} MB, {test / mb(1)} MB) for Chinese Markdown")
 
     chinese_markdown = datasets.load_dataset(
         "rojas-diego/chinese-markdown", split="train", streaming=True
     )
 
-    for split in ["train", "valid", "test"]:
+    for split in ["train" "test"]:
         os.makedirs(f"{args.output}/{split}", exist_ok=True)
 
-    files = [
-        open(f"{args.output}/{split}/chinese-markdown.bin", "wb")
-        for split in ["train", "valid", "test"]
-    ]
+    files = {
+        split: open(f"{args.output}/{split}/chinese-markdown.bin", "wb")
+        for split in ["train" "test"]
+    }
 
     written = 0
 
@@ -120,11 +110,9 @@ def generate_chinese_markdown(args):
         content = sample["code"]  # type: ignore
 
         if written < test:
-            f = files[2]
-        elif written < test + valid:
-            f = files[1]
-        elif written < train + valid + test:
-            f = files[0]
+            f = files["test"]
+        elif written < test + train:
+            f = files["train"]
         else:
             break
 
@@ -133,7 +121,7 @@ def generate_chinese_markdown(args):
         f.write(b"\0")
         written += len(encoded) + 1
 
-    for f in files:
+    for f in files.values():
         f.close()
 
     print(f"Wrote Chinese Markdown to {args.output}")
@@ -152,13 +140,13 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
         required=True,
-        help="The quotas for each language in The Stack in the form {lang}:{train_mb},{valid_mb},{test_mb}",
+        help="The quotas for each language in The Stack in the form {lang}:{train_mb},{test_mb}",
     )
     parser.add_argument(
         "--chinese-markdown-quota",
         type=str,
         required=True,
-        help="The quota for Chinese Markdown data in the form {train_mb},{valid_mb},{test_mb}",
+        help="The quota for Chinese Markdown data in the form {train_mb},{test_mb}",
     )
     args = parser.parse_args()
 

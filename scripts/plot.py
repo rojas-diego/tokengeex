@@ -99,11 +99,11 @@ def plot_cpt(args, data):
             data[lang]["num_chars"] for lang in humanevalx_languages
         )
         humanevalx_average = humanevalx_num_chars / humanevalx_num_tokens
-        # Add a red dotted line at the HumanEvalX average
+        # Add a blue dotted line at the HumanEvalX average
         plt.axhline(
             y=humanevalx_average,
-            color="r",
-            linestyle="--",
+            color="orange",
+            linestyle="dotted",
             label=f"HumanEvalX Average: {humanevalx_average:.2f}",
         )
 

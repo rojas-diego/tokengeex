@@ -157,6 +157,10 @@ impl Tokenizer {
     pub fn model(&self) -> ModelWrapper {
         self.model.clone()
     }
+
+    pub fn processors(&self) -> Vec<ProcessorWrapper> {
+        self.processors.clone()
+    }
 }
 
 struct SpecialTokenSplitter<'a> {

@@ -91,7 +91,15 @@ RUST_LOG=debug TOKENGEEX_PARALLELISM=true RAYON_NUM_THREADS=96 tokengeex train -
     --unigram-sample-regularization 'log' \
     --suggested-tokens-file './hub/tokens/suggested.json' \
     --added-tokens-file './hub/tokens/added.json' \
-    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html llvm powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json"; done)
+    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/suggested-${lang}.json "; done)
+```
+
+### Evaluation
+
+```shell
+tokengeex evaluate -v ./hub/vocab/strict-65k-noreg.json \
+    -l ./hub/log/strict-65k-noreg.eval.log \
+    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--test ${lang}:./hub/data/test/${lang}.bin "; done)
 ```
 
 ### Configurations

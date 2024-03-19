@@ -5,6 +5,7 @@ deduplicated dataset based on per-language quotas.
 
 import argparse
 import os
+import re
 import threading
 
 import datasets
@@ -12,6 +13,32 @@ import datasets
 
 def mb(size: float) -> int:
     return int(size * (1024**2))
+
+
+def has_many_non_chinese_non_ascii(content, p):
+    total_chars = 0
+    non_chinese_non_ascii_chars = 0
+
+    for char in content:
+        total_chars += 1
+
+        if "\u0000" <= char <= "\u007f":
+            continue
+
+        if (
+            "\u4e00" <= char <= "\u9fff"
+            or "\u3400" <= char <= "\u4dbf"
+            or "\uf900" <= char <= "\ufaff"
+        ):
+            continue
+
+        non_chinese_non_ascii_chars += 1
+
+    if total_chars == 0:
+        return False
+    portion = non_chinese_non_ascii_chars / total_chars
+
+    return portion > p
 
 
 def generate_the_stack(args, lang, quota):
@@ -34,7 +61,23 @@ def generate_the_stack(args, lang, quota):
         for split in ["train", "test"]
     }
 
+    regexes = [
+        "[a-zA-Z0-9+/\\n=]{64,}",
+        "(?:\\b(?:0x|\\\\x)?[0-9a-fA-F]{2}(?:,|\\b\\s*)){8,}",
+        "(?:\\\\u[0-9a-fA-F]{4}){8,}",
+    ]
+    regexes = [re.compile(regex) for regex in regexes]
+
+    size_filter = 0
+    num_lines_filter = 0
+    alphanum_filter = 0
+    number_filter = 0
+    regex_filter = 0
+    unicode_filter = 0
+    samples_visited = 0
+
     for sample in the_stack:
+        samples_visited += 1
         (
             content,
             size,
@@ -49,23 +92,57 @@ def generate_the_stack(args, lang, quota):
             sample["alphanum_fraction"],  # type: ignore
         )
 
-        # Languages for which we may not have enough data.
-        if lang not in [
-            "cuda",
-            "cmake",
-            "elixir",
-            "perl",
-            "toml",
-            "hcl",
-            "makefile",
-        ]:
-            if (
-                size > mb(1)
-                or avg_line_length > 100
-                or alphanum_fraction < 0.25
-                or (max_line_length > 1000 and lang != "json" and lang != "html")
-            ):
+        num_lines = content.count("\n")
+
+        # Too short or too long
+        if size < 16 or size > (mb(1) / 4):
+            size_filter += 1
+            continue
+
+        # For JSON, YAML, TOML, we remove files with more than 512 lines
+        # to minimize the impact of repeated tokens in data files.
+        if lang in ["json", "yaml", "toml", "sql", "r", "hcl"]:
+            if num_lines > 256:
+                num_lines_filter += 1
                 continue
+        elif num_lines > 4096:
+            num_lines_filter += 1
+
+        # Suspicious line lengths
+        if avg_line_length > 100 or avg_line_length < 10 or max_line_length > 1000:
+            num_lines_filter += 1
+            continue
+
+        # Suspicious alphanum fraction
+        if alphanum_fraction < 0.25:
+            alphanum_filter += 1
+            continue
+
+        # Too many numbers (0123456789)
+        if sum(char.isdigit() for char in content) > 0.3 * len(content):
+            number_filter += 1
+            continue
+
+        # We remove the file if any of the substrings matching these expressions
+        # is longer than 256 characters or if the fraction of matched characters
+        # is more than 50% of the file.
+        skip = False
+        for regex in regexes:
+            matches = regex.findall(content)
+            if (
+                any(len(match) > 256 for match in matches)
+                or sum(len(match) for match in matches) / len(content) > 0.5
+            ):
+                skip = True
+                break
+        if skip:
+            regex_filter += 1
+            continue
+
+        # Remove anything that's not Chinese or ASCII.
+        if has_many_non_chinese_non_ascii(content, 0.2):
+            unicode_filter += 1
+            continue
 
         if written < test:
             f = files["test"]
@@ -82,7 +159,11 @@ def generate_the_stack(args, lang, quota):
     for f in files.values():
         f.close()
 
-    print(f"Wrote {written}/{train + test} for {lang} to {args.output}")
+    print(
+        f"Wrote {written}/{train + test} for {lang} to {args.output}. {samples_visited} samples visited. "
+        f"Filters stats: size={size_filter} num_lines={num_lines_filter} alphanum={alphanum_filter} "
+        f"number={number_filter} regex={regex_filter} unicode={unicode_filter}."
+    )
 
 
 def generate_chinese_markdown(args):
@@ -124,7 +205,7 @@ def generate_chinese_markdown(args):
     for f in files.values():
         f.close()
 
-    print(f"Wrote Chinese Markdown to {args.output}")
+    print(f"Wrote Chinese Markdown to {args.output}.")
 
 
 if __name__ == "__main__":
@@ -139,34 +220,36 @@ if __name__ == "__main__":
         "--the-stack-quotas",
         type=str,
         nargs="+",
-        required=True,
         help="The quotas for each language in The Stack in the form {lang}:{train_mb},{test_mb}",
     )
     parser.add_argument(
         "--chinese-markdown-quota",
         type=str,
-        required=True,
         help="The quota for Chinese Markdown data in the form {train_mb},{test_mb}",
     )
     args = parser.parse_args()
 
-    the_stack_quotas = [quota.split(":") for quota in args.the_stack_quotas]
-    the_stack_quotas = [
-        (lang, tuple(quota.split(","))) for [lang, quota] in the_stack_quotas
-    ]
-    the_stack_quotas = {
-        lang: (mb(float(train_mb)), mb(float(valid_mb)), mb(float(test_mb)))
-        for lang, (train_mb, valid_mb, test_mb) in the_stack_quotas
-    }
+    if args.the_stack_quotas:
+        the_stack_quotas = [quota.split(":") for quota in args.the_stack_quotas]
+        the_stack_quotas = [
+            (lang, tuple(quota.split(","))) for [lang, quota] in the_stack_quotas
+        ]
+        the_stack_quotas = {
+            lang: (mb(float(train_mb)), mb(float(test_mb)))
+            for lang, (train_mb, test_mb) in the_stack_quotas
+        }
 
-    threads = []
+        threads = []
 
-    for lang, quota in the_stack_quotas.items():
-        thread = threading.Thread(target=generate_the_stack, args=(args, lang, quota))
-        threads.append(thread)
-        thread.start()
+        for lang, quota in the_stack_quotas.items():
+            thread = threading.Thread(
+                target=generate_the_stack, args=(args, lang, quota)
+            )
+            threads.append(thread)
+            thread.start()
 
-    for thread in threads:
-        thread.join()
+        for thread in threads:
+            thread.join()
 
-    generate_chinese_markdown(args)
+    if args.chinese_markdown_quota:
+        generate_chinese_markdown(args)

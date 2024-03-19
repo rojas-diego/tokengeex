@@ -323,7 +323,7 @@ impl UnigramTrainer {
                                 frequencies[i] += *freq;
                             }
                             SampleRegularization::Log => {
-                                frequencies[i] += (*freq as f64).log2().round() as usize;
+                                frequencies[i] += regularize_sample_log(*freq);
                             }
                             SampleRegularization::Constant => {
                                 frequencies[i] = 1;
@@ -444,4 +444,25 @@ fn digamma(mut x: f64) -> f64 {
     result += x.ln() + (1.0 / 24.0) * xx2 - 7.0 / 960.0 * xx4 + (31.0 / 8064.0) * xx4 * xx2
         - (127.0 / 30720.0) * xx4 * xx4;
     result
+}
+
+fn regularize_sample_log(freq: usize) -> usize {
+    (freq as f64 + 1.0).log2().round() as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_regularize_sample_log() {
+        for (v, expected) in [(0usize, 0usize), (1, 1), (2, 2), (5, 3), (11, 4), (22, 5)] {
+            let actual = regularize_sample_log(v);
+            assert_eq!(
+                actual, expected,
+                "f({}) -> expected={} actual={}",
+                v, expected, actual
+            );
+        }
+    }
 }

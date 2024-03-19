@@ -67,6 +67,17 @@ mod flags {
                 optional --unigram-sample-regularization unigram_sample_regularization: String
             }
 
+            /// Evaluate the tokenizer on a test set.
+            cmd evaluate {
+                /// Tokeniser vocabulary filepath.
+                required -v, --vocab vocab: String
+                /// Log filepath.
+                required -l, --logfile logfile: String
+                /// List of source files to evaluate the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
+                repeated --test test: String
+            }
+
             /// Encode text using a tokeniser.
             cmd encode {
                 /// Tokeniser vocabulary filepath.
@@ -426,8 +437,8 @@ fn train(
                     .train(&mut model, &all_train_samples, &keep)
                     .unwrap();
 
-                evaluate(&mut logfile, "train", epoch, &train, &model);
-                evaluate(&mut logfile, "test", epoch, &test, &model);
+                evaluate_impl(&mut logfile, "train", epoch, &train, &model);
+                evaluate_impl(&mut logfile, "test", epoch, &test, &model);
 
                 epoch += 1;
             }
@@ -443,7 +454,7 @@ fn train(
     }
 }
 
-fn evaluate(
+fn evaluate_impl(
     logfile: &mut FileLogger,
     split: &str,
     epoch: usize,
@@ -490,9 +501,9 @@ fn evaluate(
         compression.insert(source.name.clone(), compression_for_source.clone());
 
         log::info!(
-            "{:<5} {:>8?} | {:>9} chars | {:>9} tokens | {:>4} chars per token",
-            split,
-            source.name,
+            "{} | {:>18} | {:>9} chars | {:>9} tokens | {:<4} chars per token",
+            split.to_uppercase(),
+            format!("{:?}", source.name),
             compression_for_source.num_chars,
             compression_for_source.num_tokens,
             compression_for_source.chars_per_token,
@@ -537,6 +548,20 @@ fn evaluate(
     logfile.write(&evaluation);
 }
 
+fn evaluate(vocab: &str, logfile: &str, test: &Vec<String>) {
+    let mut logfile = FileLogger::new(logfile);
+
+    let tokenizer = tokengeex::load(vocab).unwrap();
+
+    let test = load_sources(&test, &tokenizer.processors());
+
+    let model = match tokenizer.model() {
+        tokengeex::ModelWrapper::Unigram(unigram) => unigram,
+    };
+
+    evaluate_impl(&mut logfile, "test", 0, &test, &model);
+}
+
 fn main() {
     env_logger::init();
 
@@ -567,6 +592,9 @@ fn main() {
                 flags.unigram_num_sub_iterations.unwrap_or(2),
                 &flags.unigram_sample_regularization.unwrap_or("none".into()),
             );
+        }
+        flags::TokengeexCmd::Evaluate(flags) => {
+            evaluate(&flags.vocab, &flags.logfile, &flags.test);
         }
         flags::TokengeexCmd::Encode(flags) => {
             encode(flags.input.as_deref(), &flags.vocab);

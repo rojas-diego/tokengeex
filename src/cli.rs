@@ -501,7 +501,7 @@ fn evaluate_impl(
         compression.insert(source.name.clone(), compression_for_source.clone());
 
         log::info!(
-            "{} | {:>18} | {:>9} chars | {:>9} tokens | {:<4} chars per token",
+            "{:>5} | {:>18} | {:>9} chars | {:>9} tokens | {:<4} chars per token",
             split.to_uppercase(),
             format!("{:?}", source.name),
             compression_for_source.num_chars,

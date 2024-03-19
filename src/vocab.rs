@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-pub const STRICT_RE: &str = r#"(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:<D?[UC]? [a-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[0-9]+))|(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[a-z]+))){1,3}$)"#;
+pub const STRICT_RE: &str = r#"(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:</?D?[UC]? [a-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[0-9]+))|(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[a-z]+))){1,3}$)"#;
 pub const BASE_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
 pub const ADVANCED_RE: &str = r#"(?:^.$)|(?:^[[:punct:][:space:][DCU]]+$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:D?[UC]?)?(?: ?(?:(?:[a-z\._:/\-\*]+|[0-9]{1,4})(?:D?[UC]?))){0,4}$)|(?:^<D?[UC]? [a-z]+(?:>|/>| />)?$)"#;
 
@@ -213,6 +213,220 @@ mod tests {
     }
 
     #[test]
+    fn make_regexes() {
+        // ---------------------------------------------------------------------
+        // Basic
+        // ---------------------------------------------------------------------
+        // Any word.
+        let word = r#"(?:[A-Za-z]+)"#;
+        // Any number.
+        let _number = r#"(?:[0-9]+)"#;
+        // Any sequence of Chinese characters.
+        let chinese = r#"(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)"#;
+        // Small number (max 3 digits).
+        let _small_number = r#"(?:[0-9]{1,3})"#;
+        // Any number or word.
+        let word_or_number = r#"(?:[A-Za-z0-9]+)"#;
+
+        // ---------------------------------------------------------------------
+        // Coding
+        // ---------------------------------------------------------------------
+        // Any variable name. (underscore, hyphens, camel case)
+        let variable_name = r#"(?:[a-zA-Z0-9_\-]+)"#;
+
+        let variable_name_regex = Regex::new(&format!("^{}$", variable_name)).unwrap();
+        println!("Variable name: {}", variable_name_regex);
+        assert_regex_matches(
+            &variable_name_regex,
+            &[
+                "var", "var_name", "var-name", "varName", "var123", "var-123",
+            ],
+            &["var name", "var name ", "var name-", "var name_"],
+        );
+
+        // ---------------------------------------------------------------------
+        // Text
+        // ---------------------------------------------------------------------
+        // Space word or number.
+        let space_word_or_number = r#"(?:(?: ?[a-zA-Z0-9]+){1,3})"#;
+
+        let space_word_or_number_regex =
+            Regex::new(&format!("^{}$", space_word_or_number)).unwrap();
+        println!("Space word or number: {}", space_word_or_number_regex);
+        assert_regex_matches(
+            &space_word_or_number_regex,
+            &[
+                "word",
+                " word",
+                "123",
+                " 123",
+                "word123",
+                " word123",
+                "word 123",
+                "word 123 123",
+            ],
+            &["word 123 123 123", "word 123 ", "word 123 123 123 123"],
+        );
+
+        // ---------------------------------------------------------------------
+        // URLs and Network Miscellaneous
+        // ---------------------------------------------------------------------
+        // A subdomain which is a sequence of {word} which may be separated by
+        // hyphens.
+        let subdomain = format!("(?:{}(?:-{})*)", word, word);
+        // Multiple subdomains separated by dots.
+        let subdomains = format!("(?:{}(?:\\.{})*)", subdomain, subdomain);
+        // IPv4 address including the capcode.
+        let ipv4 = r#"(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3})"#;
+        // Port specification including the ':'.
+        let port = r#"(?::[0-9]{1,5})"#;
+        // URL protocol.
+        let protocol = r#"(?:[a-z]+)"#;
+        // URL including the protocol.
+        let url = format!("(?:{}://{}(?:\\.{})?{}?)", protocol, subdomains, ipv4, port);
+
+        let subdomain_regex = Regex::new(&format!("^{}$", subdomain)).unwrap();
+        println!("Subdomain: {}", subdomain_regex);
+        assert_regex_matches(
+            &subdomain_regex,
+            &["github", "github-world", "github-world-com"],
+            &["github-world-com-", "github-world.com", "github.world"],
+        );
+
+        let ipv4_regex = Regex::new(&format!("^{}$", ipv4)).unwrap();
+        println!("IPv4: {}", ipv4_regex);
+        assert_regex_matches(&ipv4_regex, &["127.0.0.1"], &["256.256.256.256.256"]);
+
+        let subdomains_regex = Regex::new(&format!("^{}$", subdomains)).unwrap();
+        println!("Subdomains: {}", subdomains_regex);
+        assert_regex_matches(&subdomains_regex, &["github.world.com"], &["hello world"]);
+
+        let port_regex = Regex::new(&format!("^ ?{}$", port)).unwrap();
+        println!("Port: {}", port_regex);
+        assert_regex_matches(&port_regex, &[":80", " :443", ":8080"], &[":999999"]);
+
+        let url_regex = Regex::new(&format!("^{}$", url)).unwrap();
+        println!("URL: {}", url_regex);
+        assert_regex_matches(
+            &url_regex,
+            &[
+                "https://github.world.com",
+                "tcp://www.google.com",
+                "https://grafana.codegeex.cn:8443",
+            ],
+            &["..."],
+        );
+
+        // ---------------------------------------------------------------------
+        // HTML
+        // ---------------------------------------------------------------------
+        // HTML tag.
+        let html_tag = r#"(?:< ?[A-Za-z]+(?:>|/>| />)?)"#;
+
+        let html_tag_regex = Regex::new(&format!("^{}$", html_tag)).unwrap();
+        println!("HTML Tag: {}", html_tag_regex);
+        assert_regex_matches(
+            &html_tag_regex,
+            &["<div>", "<a", "<a/>", "<a />"],
+            &["a>", "<a /", "<a / >"],
+        );
+
+        // ---------------------------------------------------------------------
+        // Punctuation
+        // ---------------------------------------------------------------------
+        // Punctuation with space.
+        let many_punct = r#"(?:[ [:punct:]]+)"#;
+        // L punctuation with whitespace.
+        let l_punct_whitespace = format!("(?:{}?(?:[[:space:]]*))", many_punct);
+        // R punctuation with whitespace.
+        let r_punct_whitespace = format!("(?:[[:space:]]*{}?)", many_punct);
+        // Word that begins with punctuation.
+        let word_lpunct = format!("(?:[[:punct:]]{})", word_or_number);
+
+        let word_lpunct_regex = Regex::new(&format!("^{}$", word_lpunct)).unwrap();
+        println!("Word with R punctuation: {}", word_lpunct_regex);
+        assert_regex_matches(
+            &word_lpunct_regex,
+            &["-WORD", "_123", "*word", "/word", "&word"],
+            &["word", "word-", "word_"],
+        );
+
+        let l_punct_whitespace_regex = Regex::new(&format!("^{}$", l_punct_whitespace)).unwrap();
+        println!(
+            "L Punctuation with whitespace: {}",
+            l_punct_whitespace_regex
+        );
+        assert_regex_matches(
+            &l_punct_whitespace_regex,
+            &[" ", " . ", ".", " .", ". / ^ \t\n"],
+            &[" \t \n . / ^ "],
+        );
+
+        let r_punct_whitespace_regex = Regex::new(&format!("^{}$", r_punct_whitespace)).unwrap();
+        println!(
+            "R Punctuation with whitespace: {}",
+            r_punct_whitespace_regex
+        );
+        assert_regex_matches(
+            &r_punct_whitespace_regex,
+            &[" ", " . ", ".", " .", "\t\n./^"],
+            &[". / ^ \t \n "],
+        );
+
+        // ---------------------------------------------------------------------
+        // STRICT
+        // ---------------------------------------------------------------------
+        // The strict regex allows the following patterns:
+        // - Lone characters
+        // - Word
+        // - Numbers
+        // - Word or number LPunct
+        // - R or L punct with whitespace
+        // - Chinese
+        // - URLs
+        // - HTML tags
+        let strict_regex = Regex::new(
+            &[
+                ".",
+                &word_lpunct,
+                &l_punct_whitespace,
+                &r_punct_whitespace,
+                &chinese,
+                &url,
+                &html_tag,
+                &space_word_or_number,
+            ]
+            .map(|re| format!("(?:^{}$)", re))
+            .join("|"),
+        )
+        .unwrap();
+        println!("Strict: {}", strict_regex);
+        assert_regex_matches(
+            &strict_regex,
+            &[
+                "word",
+                "123",
+                "-WORD",
+                " . ",
+                " .",
+                " . / ^ \t\n",
+                "你好",
+                "<div>",
+                " word",
+                " multiple words",
+                " 123",
+                " . ",
+                " .",
+                " . / ^ \t\n",
+                "好",
+                "https://github.world.com",
+                "<div>",
+            ],
+            &["word ", "123 ", "WORD-", "WORD_", "github.world.com"],
+        );
+    }
+
+    #[test]
     fn make_regexes_capcode() {
         // ---------------------------------------------------------------------
         // Basic
@@ -358,13 +572,13 @@ mod tests {
         // ---------------------------------------------------------------------
         // HTML
         // ---------------------------------------------------------------------
-        let html_tag = r#"(?:<D?[UC]? [a-z]+(?:>|/>| />)?)"#;
+        let html_tag = r#"(?:</?D?[UC]? [a-z]+(?:>|/>| />)?)"#;
 
         let html_tag_regex = Regex::new(format!("^{}$", html_tag).as_str()).unwrap();
         println!("HTML Tag: {}", html_tag_regex);
         assert_regex_matches(
             &html_tag_regex,
-            &["<D div>", "<DU a", "<D a/>", "<D a />"],
+            &["<D div>", "<DU a", "<D a/>", "<D a />", "</D div>"],
             &[],
         );
 

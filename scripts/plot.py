@@ -39,10 +39,10 @@ def load_data(args):
     else:
         epoch = epochs[int(args.e)]
 
-    return epoch[args.s]
+    return epoch[args.s], args.i.split("/")[-1].rsplit(".")[0]
 
 
-def plot_cpt(args, data):
+def plot_cpt(args, data, filename):
     # {compression: {lang: {chars_per_token: float, num_tokens: usize, num_chars: usize}}}
     data = data["compression"]
 
@@ -70,7 +70,7 @@ def plot_cpt(args, data):
         palette="viridis",
         legend=False,
     )
-    plt.gca().set_ylim(top=6)
+    plt.gca().set_ylim(top=7)
     offset = 0.35  # This value might need fine-tuning
     plt.xticks(
         ticks=np.arange(len(df["Language"])) + offset,
@@ -78,7 +78,7 @@ def plot_cpt(args, data):
         rotation=45,
         ha="right",
     )
-    plt.title("Character per Token Ratio by Language")
+    plt.title(f"Character per Token Ratio by Language ({filename})")
     plt.tight_layout()
     plt.xlabel("")
 
@@ -91,21 +91,31 @@ def plot_cpt(args, data):
 
     # Calculate the average of the HumanEvalX languages
     humanevalx_languages = ["go", "python", "cpp", "java", "javascript"]
-    if all(lang in data.keys() for lang in humanevalx_languages):
-        humanevalx_num_tokens = sum(
-            data[lang]["num_tokens"] for lang in humanevalx_languages
-        )
-        humanevalx_num_chars = sum(
-            data[lang]["num_chars"] for lang in humanevalx_languages
-        )
-        humanevalx_average = humanevalx_num_chars / humanevalx_num_tokens
-        # Add a blue dotted line at the HumanEvalX average
-        plt.axhline(
-            y=humanevalx_average,
-            color="orange",
-            linestyle="dotted",
-            label=f"HumanEvalX Average: {humanevalx_average:.2f}",
-        )
+    codegeex_languages = [
+        "jsx",
+        "javascript",
+        "typescript",
+        "java",
+        "python",
+        "html",
+        "cpp",
+        "c",
+    ]
+    for subset, name, color in [
+        (humanevalx_languages, "HumanEvalX", "green"),
+        (codegeex_languages, "CodeGeeX", "blue"),
+    ]:
+        if all(lang in data.keys() for lang in subset):
+            subset_num_tokens = sum(data[lang]["num_tokens"] for lang in subset)
+            subset_num_chars = sum(data[lang]["num_chars"] for lang in subset)
+            subset_average = subset_num_chars / subset_num_tokens
+            # Add a blue dotted line at the subset average
+            plt.axhline(
+                y=subset_average,
+                color=color,
+                linestyle="dotted",
+                label=f"{name} Average: {subset_average:.2f}",
+            )
 
     # Optionally, add a legend to display the average value
     plt.legend()
@@ -117,7 +127,7 @@ def plot_cpt(args, data):
         plt.show()
 
 
-def plot_freq(args, data):
+def plot_freq(args, data, filename):
     # {frequency_buckets: [usize]}
     data = np.array(data["frequency_buckets"], dtype=np.float64)
     data /= data.sum()
@@ -138,7 +148,7 @@ def plot_freq(args, data):
     ax.set_ylim(0.0, 100.0)
     ax.yaxis.set_major_formatter("{x}%")
     ax.set_ylabel("Rate of Occurrence (%)")
-    ax.set_title("Token Frequency Distribution (Log Scale)")
+    ax.set_title(f"Token Frequency Distribution ({filename})")
 
     # Show the plot
     plt.tight_layout()
@@ -194,7 +204,7 @@ if __name__ == "__main__":
     )
     plt.rcParams.update({"font.size": 14})
 
-    data = load_data(args)
+    data, filename = load_data(args)
 
-    plot_cpt(args, data)
-    plot_freq(args, data)
+    plot_cpt(args, data, filename)
+    plot_freq(args, data, filename)

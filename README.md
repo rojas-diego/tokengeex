@@ -72,43 +72,20 @@ You can install the [Rust binary crate](https://crates.io/crates/tokengeex) thro
 cargo install tokengeex --features cli
 ```
 
-Here's the full command used to train capcode vocabularies.
+Here's the full command used to train base vocabularies.
 
 ```shell
 RUST_LOG=debug tokengeex train \
     --model 'unigram' \
-    --output 'capcode-65k.json' \
-    --logfile 'capcode-65k.log' \
-    --vocab-size 65536 \
-    --processor 'nfc' \
-    --processor 'crlf' \
-    --processor 'capcode' \
-    --initial-vocab-max-token-length 32 \
-    --initial-vocab-size 5000000 \
-    --initial-vocab-insert-probability 0.01 \
-    --initial-vocab-allow '(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:<D?[UC]? [a-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[0-9]+))|(?:(?:(?:(?:D|DU|DC|U|C) )| )?(?:[a-z]+))){1,3}$)' \
-    --unigram-shrinking-factor 0.8 \
-    --unigram-num-sub-iterations 2 \
-    --unigram-sample-regularization 'log' \
-    --added-tokens-file './hub/tokens/capcode/added.json' \
-    --suggested-tokens-file './hub/tokens/capcode/suggested.json' \
-    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/capcode/suggested-${lang}.json "; done)
-```
-
-Here's the full command used to train non-capcode vocabularies.
-
-```shell
-RUST_LOG=debug tokengeex train \
-    --model 'unigram' \
-    --output '131k.json' \
-    --logfile '131k.log' \
+    --output 'base-131k.json' \
+    --logfile 'base-131k.log' \
     --vocab-size 131072 \
     --processor 'nfc' \
     --processor 'crlf' \
     --initial-vocab-max-token-length 32 \
     --initial-vocab-size 10000000 \
     --initial-vocab-insert-probability 0.01 \
-    --initial-vocab-allow "(?:^.\$)|(?:^(?:[[:punct:]](?:(?:[A-Za-z']+)|(?:[0-9]{1,4})))\$)|(?:^(?:(?:(?:[A-Za-z']+)|(?:[0-9]{1,4}))[[:punct:]])\$)|(?:^(?:(?:[ [:punct:]]+)?(?:[[:space:]]*))\$)|(?:^(?:[[:space:]]*(?:[ [:punct:]]+)?)\$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)\$)|(?:^(?:(?:[a-z]+)://(?:(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*)(?:\.(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*))*)(?:\.(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}))?(?::[0-9]{1,5})?)\$)|(?:^(?:</? ?[A-Za-z]+(?:>|/>| />)?)\$)|(?:^(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))?(?:(?:[_-]+)(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))*(?:[_-]*))\$)|(?:^(?: ?(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))\$)|(?:^(?: ?(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))(?: (?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))){1,3}))\$)" \
+    --initial-vocab-allow "$(cat data/base.regex)" \
     --unigram-shrinking-factor 0.8 \
     --unigram-num-sub-iterations 2 \
     --unigram-sample-regularization 'log' \
@@ -117,22 +94,25 @@ RUST_LOG=debug tokengeex train \
     $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/base/suggested-${lang}.json "; done)
 ```
 
-### Configurations
-
-#### Capcode
-
-```regexp
-(?:^.$)|(?:^(?:(?:[[:punct:]]|(?:::))(?:(?:DU|DC|D) )(?:[a-z0-9]+))$)|(?:^(?:(?:[[:punct:] DCU]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[[:punct:] DCU]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?: (?:[a-z]+)://(?:(?:(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*)(?:\.(?:(?:(?:(?:DU|DC|D) )(?:[a-z]+))(?:-(?:(?:(?:DU|DC|D) )(?:[a-z]+)))*))*)|(?:(?:(?:DU|DC|D) )?(?:[0-9]+)(?:\.(?:(?:(?:DU|DC|D) )(?:[0-9]+))){3}))(?::(?:(?:DU|DC|D) )[0-9]{1,5})?)$)|(?:^(?:(?:(?:D|DU|DC|U|C) )|(?: ?(?:[0-9]+))|(?: ?(?:[a-z]+)))+$)
-```
-
-#### No Capcode
-
-```regexp
-(?:^.$)|(?:^(?:[[:punct:]](?:(?:[A-Za-z']+)|(?:[0-9]{1,4})))$)|(?:^(?:(?:(?:[A-Za-z']+)|(?:[0-9]{1,4}))[[:punct:]])$)|(?:^(?:(?:[ [:punct:]]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[ [:punct:]]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?:(?:[a-z]+)://(?:(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*)(?:\.(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*))*)(?:\.(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}))?(?::[0-9]{1,5})?)$)|(?:^(?:</? ?[A-Za-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))?(?:(?:[_-]+)(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))*(?:[_-]*))$)|(?:^(?: ?(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))$)|(?:^(?: ?(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))(?: (?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))){1,3}))$)
-```
-
-### Evaluation
+Here's the full command used to train capcode vocabularies.
 
 ```shell
-tokengeex evaluate -v ./hub/vocab/65k.json -l ./hub/log/65k.eval.log $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--test ${lang}:./hub/data/test/${lang}.bin "; done)
+RUST_LOG=debug tokengeex train \
+    --model 'unigram' \
+    --output 'capcode-131k.json' \
+    --logfile 'capcode-131k.log' \
+    --vocab-size 131072 \
+    --processor 'nfc' \
+    --processor 'crlf' \
+    --processor 'capcode' \
+    --initial-vocab-max-token-length 32 \
+    --initial-vocab-size 10000000 \
+    --initial-vocab-insert-probability 0.01 \
+    --initial-vocab-allow "$(cat data/capcode.regex)" \
+    --unigram-shrinking-factor 0.8 \
+    --unigram-num-sub-iterations 2 \
+    --unigram-sample-regularization 'log' \
+    --added-tokens-file './hub/tokens/capcode/added.json' \
+    --suggested-tokens-file './hub/tokens/capcode/suggested.json' \
+    $(for lang in assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/capcode/suggested-${lang}.json "; done)
 ```

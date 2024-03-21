@@ -3,7 +3,7 @@
 
 use crate::{
     utils::{lattice::Lattice, trie::Trie},
-    Error, Model, Result, ScoredToken, Token, TokenID,
+    Error, Model, ModelWrapper, Result, ScoredToken, Token, TokenID,
 };
 use std::collections::HashMap;
 
@@ -59,6 +59,12 @@ pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<Token, u32>,
     trie: Trie<(TokenID, u32)>,
+}
+
+impl From<Unigram> for ModelWrapper {
+    fn from(val: Unigram) -> Self {
+        ModelWrapper::Unigram(val)
+    }
 }
 
 impl Unigram {

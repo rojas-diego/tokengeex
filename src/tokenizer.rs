@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
 
-use crate::{Model, ModelWrapper, Processor, ProcessorWrapper, Result};
+use crate::{utils::parallelism::*, Model, ModelWrapper, Processor, ProcessorWrapper, Result};
 
 #[derive(Clone)]
 pub struct Tokenizer {
@@ -36,12 +36,16 @@ impl From<TokenizerError> for Box<dyn std::error::Error + Send> {
 }
 
 impl Tokenizer {
-    // TODO: Find a workaround for this.
-    #[allow(private_interfaces)]
-    pub fn new(model: ModelWrapper, processors: Vec<ProcessorWrapper>) -> Self {
+    // Create a new tokenizer with a model and a list of processors.
+    pub fn new<M, I>(model: M, processors: I) -> Self
+    where
+        M: Into<ModelWrapper>,
+        I: IntoIterator,
+        I::Item: Into<ProcessorWrapper>,
+    {
         Tokenizer {
-            model,
-            processors,
+            model: model.into(),
+            processors: processors.into_iter().map(|p| p.into()).collect(),
             special_tokens: Vec::new(),
             special_tokens_map: HashMap::new(),
         }
@@ -50,8 +54,16 @@ impl Tokenizer {
     /// Add special tokens to this tokenizer. Special tokens are encoded before
     /// the rest of the tokenization pipeline. They are assigned IDs starting
     /// from the end of the vocabulary.
-    pub fn add_special_tokens(&mut self, tokens: &[&str]) {
+    pub fn add_special_tokens<I>(&mut self, tokens: I)
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str> + ToString,
+    {
         for token in tokens {
+            if self.special_tokens_map.contains_key(token.as_ref()) {
+                continue;
+            }
+
             self.special_tokens_map
                 .insert(token.to_string(), self.special_tokens.len() as u32);
             self.special_tokens.push(token.to_string());
@@ -84,6 +96,19 @@ impl Tokenizer {
         }
 
         Ok(ids)
+    }
+
+    /// Encode multiple samples at once.
+    pub fn encode_batch<I>(&self, inputs: I) -> Result<Vec<Vec<u32>>>
+    where
+        I: Iterator + Send,
+        I::Item: AsRef<str> + Send,
+    {
+        inputs
+            .into_iter()
+            .maybe_par_bridge()
+            .map(|s| self.encode(s.as_ref()))
+            .collect()
     }
 
     /// Decode the input sequence from an array of token IDs.
@@ -127,6 +152,18 @@ impl Tokenizer {
         Ok(output)
     }
 
+    pub fn decode_batch<I>(&self, inputs: I) -> Result<Vec<String>>
+    where
+        I: Iterator + Send,
+        I::Item: AsRef<[u32]> + Send,
+    {
+        inputs
+            .into_iter()
+            .maybe_par_bridge()
+            .map(|s| self.decode(s.as_ref()))
+            .collect()
+    }
+
     pub fn token_to_id(&self, token: &str) -> Option<u32> {
         if let Some(id) = self.special_tokens_map.get(token) {
             return Some(self.model.vocab_size() as u32 + id);
@@ -142,6 +179,17 @@ impl Tokenizer {
         } else {
             None
         }
+    }
+
+    pub fn is_special(&self, id: u32) -> Option<bool> {
+        if id < self.model.vocab_size() as u32 {
+            return Some(false);
+        }
+        Some((id - self.model.vocab_size() as u32) < self.special_tokens.len() as u32)
+    }
+
+    pub fn special_tokens(&self) -> Vec<String> {
+        self.special_tokens.clone()
     }
 
     pub fn vocab_size(&self) -> usize {
@@ -160,6 +208,12 @@ impl Tokenizer {
 
     pub fn processors(&self) -> Vec<ProcessorWrapper> {
         self.processors.clone()
+    }
+}
+
+impl std::fmt::Display for Tokenizer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
 
@@ -295,7 +349,7 @@ impl<'de> Visitor<'de> for TokenizerVisitor {
         let model = model.ok_or_else(|| serde::de::Error::missing_field("model"))?;
         let mut tokenizer = Tokenizer::new(model, processors);
 
-        tokenizer.add_special_tokens(&special_tokens);
+        tokenizer.add_special_tokens(special_tokens);
 
         Ok(tokenizer)
     }

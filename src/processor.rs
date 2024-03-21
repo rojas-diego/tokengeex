@@ -42,6 +42,12 @@ impl Processor for ProcessorWrapper {
 #[derive(Clone)]
 pub struct CrlfProcessor;
 
+impl From<CrlfProcessor> for ProcessorWrapper {
+    fn from(val: CrlfProcessor) -> Self {
+        ProcessorWrapper::Crlf(val)
+    }
+}
+
 impl Processor for CrlfProcessor {
     fn preprocess(&self, s: &str) -> String {
         s.replace("\r\n", "\n")
@@ -108,6 +114,12 @@ impl<'de> serde::Deserialize<'de> for CrlfProcessor {
 /// Applies the capcode encoding to the input string.
 #[derive(Clone)]
 pub struct CapcodeProcessor;
+
+impl From<CapcodeProcessor> for ProcessorWrapper {
+    fn from(val: CapcodeProcessor) -> Self {
+        ProcessorWrapper::Capcode(val)
+    }
+}
 
 impl Processor for CapcodeProcessor {
     fn preprocess(&self, s: &str) -> String {
@@ -182,6 +194,12 @@ pub enum UnicodeProcessor {
     Nfd,
     Nfkc,
     Nfkd,
+}
+
+impl From<UnicodeProcessor> for ProcessorWrapper {
+    fn from(val: UnicodeProcessor) -> Self {
+        ProcessorWrapper::Unicode(val)
+    }
 }
 
 impl Processor for UnicodeProcessor {

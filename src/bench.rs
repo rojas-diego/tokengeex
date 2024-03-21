@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 use tokengeex::{
     lattice::{Lattice, VecPool},
-    Model, ModelWrapper, Processor, TokenID, BASE_RE, CAPCODE_RE,
+    Model, ModelWrapper, Processor, TokenID, CAPCODE_RE,
 };
 
 fn load_samples() -> (Vec<String>, usize) {

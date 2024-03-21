@@ -23,6 +23,21 @@ class Tokenizer:
         """
         pass
 
+    def encode_batch(self, texts: List[str]) -> List[List[int]]:
+        """
+        Encodes a list of strings into a list of lists of tokens.
+
+        Args:
+            texts: A list of input strings.
+
+        Returns:
+            A list of lists of token IDs.
+
+        Exceptions:
+            TokenGeeXError: If the input list of strings contains an untokenizable string.
+        """
+        pass
+
     def decode(self, ids: List[int]) -> str:
         """
         Decodes a list of ids into a string.
@@ -35,6 +50,21 @@ class Tokenizer:
 
         Exceptions:
             TokenGeeXError: If the input list of token IDs contains invalid IDs.
+        """
+        pass
+
+    def decode_batch(self, idss: List[List[int]]) -> List[str]:
+        """
+        Decodes a list of lists of ids into a list of strings.
+
+        Args:
+            idss: A list of lists of token IDs.
+
+        Returns:
+            A list of decoded strings.
+
+        Exceptions:
+            TokenGeeXError: If the input list of lists of token IDs contains invalid IDs.
         """
         pass
 
@@ -56,10 +86,51 @@ class Tokenizer:
         """
         pass
 
+    def is_special(self, id: int) -> bool:
+        """
+        Checks if an ID is a special token.
+
+        Returns:
+            True if the ID is a special token, False otherwise.
+        """
+        pass
+
+    def add_special_tokens(self, tokens: List[str]) -> None:
+        """
+        Adds special tokens to the tokenizer.
+
+        Args:
+            tokens: A list of special tokens.
+        """
+        pass
+
+    def special_tokens(self) -> List[str]:
+        """
+        Returns:
+            A list of special tokens.
+        """
+        pass
+
     def vocab_size(self) -> int:
         """
         Returns:
             The size of the vocabulary including special tokens.
+        """
+        pass
+
+    def to_string(self) -> str:
+        """
+        Returns:
+            A string representation of the tokenizer.
+        """
+        pass
+
+    def save(self, filename: str) -> None:
+        """
+        Saves the tokenizer to a file.
+
+        Args:
+            filename: The path to the tokenizer file.
         """
         pass
 

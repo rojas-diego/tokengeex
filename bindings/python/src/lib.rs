@@ -1,4 +1,5 @@
 use pyo3::create_exception;
+use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3::types::*;
 
@@ -38,8 +39,20 @@ impl PyTokenizer {
         self.tokenizer.encode(text).map_err(|e| e.into())
     }
 
+    fn encode_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<u32>>, PyTokenGeeXError> {
+        self.tokenizer
+            .encode_batch(texts.iter())
+            .map_err(|e| e.into())
+    }
+
     fn decode(&self, ids: Vec<u32>) -> Result<String, PyTokenGeeXError> {
         self.tokenizer.decode(&ids).map_err(|e| e.into())
+    }
+
+    fn decode_batch(&self, ids: Vec<Vec<u32>>) -> Result<Vec<String>, PyTokenGeeXError> {
+        self.tokenizer
+            .decode_batch(ids.iter())
+            .map_err(|e| e.into())
     }
 
     fn token_to_id(&self, token: &str) -> Option<u32> {
@@ -50,8 +63,38 @@ impl PyTokenizer {
         self.tokenizer.id_to_token(id)
     }
 
+    fn is_special(&self, id: u32) -> Option<bool> {
+        self.tokenizer.is_special(id)
+    }
+
+    fn add_special_tokens(&mut self, tokens: Vec<String>) {
+        self.tokenizer.add_special_tokens(tokens);
+    }
+
+    fn special_tokens(&self) -> Vec<String> {
+        self.tokenizer.special_tokens()
+    }
+
     fn vocab_size(&self) -> usize {
         self.tokenizer.vocab_size()
+    }
+
+    fn save(&self, filename: &str) {
+        match self.tokenizer.save(filename) {
+            Ok(_) => {}
+            Err(e) => {
+                Python::with_gil(|py| {
+                    PyIOError::new_err(e.to_string()).restore(py);
+                    assert!(PyErr::occurred(py));
+                    drop(PyErr::fetch(py));
+                });
+            }
+        }
+    }
+
+    #[allow(clippy::inherent_to_string)]
+    fn to_string(&self) -> String {
+        self.tokenizer.to_string()
     }
 
     /// Used to pickle the Tokenizer. Useful for sharing a tokenizer between

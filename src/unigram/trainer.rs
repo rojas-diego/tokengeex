@@ -219,7 +219,7 @@ impl UnigramTrainer {
     ) -> Vec<ScoredToken> {
         assert_eq!(vocab.len(), expected_frequencies.len());
 
-        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.1;
+        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.25;
 
         let mut alternative_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
 
@@ -285,7 +285,7 @@ impl UnigramTrainer {
 
         // Segment each token in the vocabulary to understand how it would be
         // resegmented if it was removed from the vocabulary.
-        let mut has_alternative = vec![true; vocab.len()];
+        let mut always_keep = vec![true; vocab.len()];
         let mut alternatives: Vec<Vec<TokenID>> = vec![Vec::new(); vocab.len()];
         let mut lattice = Lattice::default();
         let mut pool = VecPool::with_capacity(MAX_TOKEN_LENGTH, 16);
@@ -297,15 +297,13 @@ impl UnigramTrainer {
             // first path will always be the token itself.
             let nbests = lattice.nbest(2);
 
-            if nbests.len() == 1 {
-                // There is no other way to segment this token. Keep it.
-                has_alternative[id] = true;
-            } else if nbests[0].len() > 1 {
-                // Does that mean that the token's score is so low that Unigram
-                // considers segmenting itself using two other tokens?
-                has_alternative[id] = false;
-            } else if nbests[0].len() == 1 {
-                has_alternative[id] = true;
+            if nbests.len() > 1 && nbests[0].len() > 1 {
+                // This token is not even the first choice when segmenting
+                // itself.
+                always_keep[id] = false;
+            }
+
+            if nbests.len() > 1 && nbests[0].len() == 1 {
                 for node in &nbests[1] {
                     let alt_id = node.token_id;
                     alternatives[id].push(alt_id);
@@ -378,7 +376,7 @@ impl UnigramTrainer {
                 continue;
             }
 
-            if token_frequencies[id] == 0 && !has_alternative[id] {
+            if token_frequencies[id] == 0 && !always_keep[id] {
                 // This token never occurs?
                 continue;
             } else if alternatives[id].is_empty() {

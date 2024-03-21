@@ -321,7 +321,7 @@ fn train(
     // --- Suggested, Added and Special Tokens ---
     suggested_tokens_files: &Vec<String>,
     added_tokens_files: &Vec<String>,
-    _special_tokens: &Vec<String>,
+    special_tokens: &Vec<String>,
     // --- Initial Vocabulary ---
     initial_vocab_size: usize,
     initial_vocab_max_token_length: usize,
@@ -445,7 +445,9 @@ fn train(
 
             log::info!("Training finished. Writing to {:?}.", output);
 
-            let tokenizer = Tokenizer::new(tokengeex::ModelWrapper::Unigram(model), processors);
+            let mut tokenizer = Tokenizer::new(tokengeex::ModelWrapper::Unigram(model), processors);
+
+            tokenizer.add_special_tokens(special_tokens);
             tokenizer.save(output).unwrap();
         }
         _ => {

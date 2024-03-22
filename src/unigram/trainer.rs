@@ -140,8 +140,7 @@ impl UnigramTrainer {
             // `MAX_SAMPLE_LENGTH` bytes.
             const MAX_SAMPLE_LENGTH: usize = 8192;
 
-            let tid =
-                unsafe { std::mem::transmute::<ThreadId, usize>(std::thread::current().id()) };
+            let tid = unsafe { std::mem::transmute::<ThreadId, u64>(std::thread::current().id()) };
             let start = std::time::Instant::now();
             let mut processed_bytes = 0;
             let mut expected_frequencies = vec![0.0; model.vocab.len()];

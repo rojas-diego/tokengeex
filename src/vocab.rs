@@ -208,26 +208,28 @@ mod tests {
 
     fn spaced_url_capcode_regex() -> Regex {
         let protocol = r#"(?:[a-z]+)"#;
-        let subdomains = r#"(?:(?:(?:D [a-z0-9]+).)*(?: [a-z0-9]+)?D?)"#;
-        let ipv4 = r#"(?:D [0-9]{1,3}(?:\.D [0-9]{1,3}){3})"#;
-        let port = r#"(?:D [0-9]{1,5})"#;
-        let trailing_slash = r#"(?:/D)"#;
+        let subdomains = r#"(?:(?:D? [a-z0-9]+(?:\.D)?))+"#;
+        let port = r#"(?::D [0-9]{1,5})"#;
+        let trailing_slash = r#"(?:\/D)"#;
 
         let re = format!(
-            "^ {}://(?:{}|{}){}?{}?$",
-            protocol, subdomains, ipv4, port, trailing_slash
+            r#"^ {}:\/\/{}{}?{}?$"#,
+            protocol, subdomains, port, trailing_slash
         );
         let re = Regex::new(&re).unwrap();
 
         assert_regex_matches(
             &re,
             &[
+                " http://D www.D google.D com",
+                " http://D www.D google.D com/D",
+                " http://D www.D google.D com:D 8443",
+                " http://D www.D google.D com:D 8443/D",
                 " https://D 127.D 0.D 0.D 1",
                 " https://D 127.D 0.D 0.D 1:D 80",
+                " https://D 127.D 0.D 0.D 1:D 80/D",
                 " https://D www.D",
-                " http://D www.D google.D com/D",
-                " http://D www.D google.D com",
-                " http://D www.D google.D com:D 8443",
+                " https://D www",
                 " tcp://D github.D com",
             ],
             &["https://D github.D com", "https"],
@@ -266,7 +268,7 @@ mod tests {
     }
 
     fn number_capcode_regex() -> Regex {
-        let number = r#"(?:D?[UC]? ?[0-9]{1,4}(?:.D [0-9]{1,2})?)"#;
+        let number = r#"(?:D?[UC]? ?[0-9]{1,4}(?:\.D [0-9]{1,2})?)"#;
 
         let re = format!("^{}$", number);
         let re = Regex::new(&re).unwrap();
@@ -281,7 +283,7 @@ mod tests {
     }
 
     fn punctuation_word_capcode_regex() -> Regex {
-        let pattern = r#"[\/\\_\-.]D[UC]? [a-z0-9]+"#;
+        let pattern = r#"[\/\\_\-\.]D[UC]? [a-z0-9]+"#;
 
         let re = format!("^{}$", pattern);
         let re = Regex::new(&re).unwrap();
@@ -538,6 +540,7 @@ mod tests {
                 " /D word",
                 "\na\n",
                 "a\na",
+                "D 033[D 0",
             ],
         );
 

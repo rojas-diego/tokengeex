@@ -145,7 +145,7 @@ def plot_freq(args, data, filename):
 
     ax.set_yscale("log")
     ax.set_xticklabels([])
-    ax.set_ylim(0.0, 100.0)
+    ax.set_ylim(0.0001, 100.0)
     ax.yaxis.set_major_formatter("{x}%")
     ax.set_ylabel("Rate of Occurrence (%)")
     ax.set_title(f"Token Frequency Distribution ({filename})")

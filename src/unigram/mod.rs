@@ -59,6 +59,7 @@ pub struct Unigram {
     vocab: Vec<ScoredToken>,
     token_to_ids: HashMap<Token, u32>,
     trie: Trie<(TokenID, u32)>,
+    pub capcode: bool,
 }
 
 impl From<Unigram> for ModelWrapper {
@@ -69,7 +70,7 @@ impl From<Unigram> for ModelWrapper {
 
 impl Unigram {
     /// Create a new `Unigram` model from a vocabulary of scored tokens.
-    pub fn from(vocab: Vec<ScoredToken>) -> Self {
+    pub fn from(vocab: Vec<ScoredToken>, capcode: bool) -> Self {
         let mut token_to_ids: HashMap<Token, u32> = HashMap::new();
         let mut trie = Trie::default();
 
@@ -82,6 +83,7 @@ impl Unigram {
             vocab,
             token_to_ids,
             trie,
+            capcode,
         }
     }
 
@@ -96,17 +98,40 @@ impl Unigram {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = lattice.sentence;
 
+        let delete_marker_id = self.token_to_id("D");
+        let delete_marker_score = if let Some(delete_marker_token_id) = delete_marker_id {
+            self.vocab[delete_marker_token_id as usize].1
+        } else {
+            0.0
+        };
+
         for pos in 0..input.len() {
             let suffix = &input[pos..];
 
-            buff.clear();
-            for (id, len) in self
-                .trie
-                .common_prefix_search(suffix.iter().copied(), &mut buff)
-            {
-                let score = &self.vocab[id as usize].1;
+            // "two|words" -> "two", "words"
+            // "two|words" -> "two", "D words"
+            // "two|words" -> "two", "D", " words"
+            for (prefix, delete, penalty) in &[
+                (b"".as_slice(), false, 0.0),
+                (b"D ".as_slice(), false, 0.0),
+                (b" ".as_slice(), true, delete_marker_score),
+            ] {
+                if !prefix.is_empty() && !self.capcode {
+                    continue;
+                }
 
-                lattice.insert(pos, id, len as usize, *score);
+                buff.clear();
+
+                for (id, len) in self
+                    .trie
+                    .common_prefix_search(prefix.iter().chain(suffix.iter()).copied(), &mut buff)
+                    .filter(|(_, len)| *len > prefix.len() as u32)
+                    .map(|(id, len)| (id, (len as usize) - prefix.len()))
+                {
+                    let score = &self.vocab[id as usize].1;
+
+                    lattice.insert(pos, id, len, *score + penalty, *delete);
+                }
             }
         }
     }
@@ -119,11 +144,19 @@ impl Model for Unigram {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = input.as_bytes();
 
+        let delete_marker_id = self.token_to_id("D");
+        let delete_marker_score = if let Some(delete_marker_token_id) = delete_marker_id {
+            self.vocab[delete_marker_token_id as usize].1
+        } else {
+            0.0
+        };
+
         #[derive(Clone, Debug)]
         struct Node {
             id: u32,
             score: f64,
             start: Option<usize>,
+            delete: bool,
         }
 
         // For each position i in dp, we store the best tokenization of the
@@ -132,7 +165,8 @@ impl Model for Unigram {
             Node {
                 id: 0,
                 score: 0.0,
-                start: None
+                start: None,
+                delete: false,
             };
             input.len() + 1
         ];
@@ -147,22 +181,37 @@ impl Model for Unigram {
 
             let suffix = &input[pos..];
 
-            buff.clear();
-            for (id, len) in self
-                .trie
-                .common_prefix_search(suffix.iter().copied(), &mut buff)
-            {
-                let id = id as usize;
-                let len = len as usize;
-                let node = &dp[pos + len];
-                let score = dp[pos].score + self.vocab[id].1;
+            // "two|words" -> "two", "words"
+            // "two|words" -> "two", "D words"
+            // "two|words" -> "two", "D", " words"
+            for (prefix, delete, penalty) in &[
+                (b"".as_slice(), false, 0.0),
+                (b"D ".as_slice(), false, 0.0),
+                (b" ".as_slice(), true, delete_marker_score),
+            ] {
+                if !prefix.is_empty() && !self.capcode {
+                    continue;
+                }
 
-                if node.start.is_none() || score > node.score {
-                    dp[pos + len] = Node {
-                        id: id as u32,
-                        score,
-                        start: Some(pos),
-                    };
+                buff.clear();
+
+                for (id, len) in self
+                    .trie
+                    .common_prefix_search(prefix.iter().chain(suffix.iter()).copied(), &mut buff)
+                    .filter(|(_, len)| *len > prefix.len() as u32)
+                    .map(|(id, len)| (id, (len as usize) - prefix.len()))
+                {
+                    let node = &dp[pos + len];
+                    let score = dp[pos].score + self.vocab[id as usize].1;
+
+                    if node.start.is_none() || score > node.score {
+                        dp[pos + len] = Node {
+                            id,
+                            score: score + penalty,
+                            start: Some(pos),
+                            delete: *delete,
+                        };
+                    }
                 }
             }
         }
@@ -179,6 +228,13 @@ impl Model for Unigram {
                 .ok_or_else(|| Box::new(UnigramError::NoPath(pos, input.len())) as Error)?;
 
             ids.push(node.id);
+
+            if node.delete {
+                ids.push(
+                    delete_marker_id.expect("delete marker 'D' to exist when capcode is enabled"),
+                );
+            }
+
             pos = start;
         }
 
@@ -243,15 +299,42 @@ mod tests {
             .map(|(s, f)| (s.as_bytes().to_vec(), *f))
             .collect();
 
-        let model = Unigram::from(vocab);
+        let model = Unigram::from(vocab, false);
         let ids = model.encode("abc").unwrap();
         assert_eq!(ids, vec![3, 2]);
     }
 
     #[test]
+    fn test_encode_capcode() {
+        let mut vocab: Vec<ScoredToken> = [
+            ("my", -1.0),
+            ("D", -1.0),
+            (" var", -1.0),
+            ("v", -1.0),
+            ("ar", -1.0),
+        ]
+        .iter()
+        .map(|(s, f)| (s.as_bytes().to_vec(), *f))
+        .collect();
+
+        let model = Unigram::from(vocab.clone(), false);
+        let ids = model.encode("myvar").unwrap();
+        assert_eq!(ids, vec![0, 3, 4]);
+
+        let model = Unigram::from(vocab.clone(), true);
+        let ids = model.encode("myvar").unwrap();
+        assert_eq!(ids, vec![0, 1, 2]);
+
+        vocab.push(("D var".as_bytes().to_vec(), -1.0));
+        let model = Unigram::from(vocab, true);
+        let ids = model.encode("myvar").unwrap();
+        assert_eq!(ids, vec![0, 5]);
+    }
+
+    #[test]
     fn test_decode_encode_invariants() {
         let vocab = (0..255_u8).map(|b| (vec![b], 1.0)).collect();
-        let model = Unigram::from(vocab);
+        let model = Unigram::from(vocab, false);
         let input = "你好，我叫罗杰斯";
 
         let ids = model.encode(input).unwrap();

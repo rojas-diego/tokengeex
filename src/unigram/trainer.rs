@@ -69,7 +69,7 @@ impl UnigramTrainer {
                 vocab.len()
             );
 
-            *model = Unigram::from(vocab);
+            *model = Unigram::from(vocab, model.capcode);
         }
 
         if model.vocab_size() <= desired_vocab_size {
@@ -85,13 +85,12 @@ impl UnigramTrainer {
             Ok(false)
         } else {
             // Prunes pieces.
-            log::info!(
-                "Pruning model | vocab_size={} desired_vocab_size={}",
-                model.vocab_size(),
-                desired_vocab_size
-            );
+            log::info!("Pruning model | vocab_size={}", model.vocab_size());
 
-            *model = Unigram::from(self.prune_vocab(model, model.vocab(), samples, keep)?);
+            *model = Unigram::from(
+                self.prune_vocab(model, model.vocab(), samples, keep)?,
+                model.capcode,
+            );
 
             Ok(true)
         }
@@ -135,6 +134,14 @@ impl UnigramTrainer {
         let num_samples = samples.len();
         let num_samples_processed = std::sync::atomic::AtomicUsize::new(0);
 
+        let delete_token_id = model
+            .token_to_id("D")
+            .unwrap_or(model.vocab_size() as TokenID);
+        assert!(
+            !model.capcode || delete_token_id != model.vocab_size() as TokenID,
+            "capcode is enabled but the delete token is not in the vocabulary"
+        );
+
         samples.maybe_par_chunks(chunk_size).for_each(|chunk| {
             // For each sample, we iterate over snippets of max
             // `MAX_SAMPLE_LENGTH` bytes.
@@ -159,6 +166,7 @@ impl UnigramTrainer {
                         snippet,
                         (model.vocab.len() + 1) as TokenID,
                         (model.vocab.len() + 2) as TokenID,
+                        delete_token_id,
                         &mut pool,
                     );
                     model.populate_nodes(&mut lattice);
@@ -281,6 +289,13 @@ impl UnigramTrainer {
     ) -> Result<Vec<ScoredToken>> {
         let bos_id = (vocab.len() + 1) as TokenID;
         let eos_id = (vocab.len() + 2) as TokenID;
+        let delete_token_id = model
+            .token_to_id("D")
+            .unwrap_or(model.vocab_size() as TokenID);
+
+        // If capcode is enabled, the delete token should not be in the
+        // vocabulary.
+        assert!(!model.capcode || delete_token_id != model.vocab_size() as TokenID);
 
         // Segment each token in the vocabulary to understand how it would be
         // resegmented if it was removed from the vocabulary.
@@ -289,7 +304,7 @@ impl UnigramTrainer {
         let mut lattice = Lattice::default();
         let mut pool = VecPool::with_capacity(MAX_TOKEN_LENGTH, 16);
         for (id, (token, _)) in vocab.iter().enumerate() {
-            lattice.from(token, bos_id, eos_id, &mut pool);
+            lattice.from(token, bos_id, eos_id, delete_token_id, &mut pool);
             model.populate_nodes(&mut lattice);
 
             // The second best path is the alternative to the best path. The
@@ -356,13 +371,16 @@ impl UnigramTrainer {
                 },
             )?;
 
-        log::info!("Compute model loss based on the frequencies");
-
         let sum_token_frequencies = token_frequencies.iter().sum::<usize>() as f64;
         let logsum_token_frequencies = (sum_token_frequencies as f64).ln();
 
         let mut candidates: Vec<(usize, f64)> = vec![];
-        let mut pruned_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
+        let desired_vocab_size: usize = (self.vocab_size * 11) / 10; // * 1.1
+        let pruned_size: usize = ((vocab.len() as f64) * self.shrinking_factor) as usize;
+        let pruned_size = desired_vocab_size.max(pruned_size);
+        let mut pruned_vocab: Vec<ScoredToken> = Vec::with_capacity(pruned_size);
+
+        log::info!("Compute model loss based on the frequencies");
 
         // Compute how likely the LM likelihood is reduced if the token `i` is
         // removed from the vocabulary.
@@ -386,24 +404,24 @@ impl UnigramTrainer {
                 let logprob = freq.ln() - logsum_token_frequencies;
 
                 // After removing token `i`, its frequency is re-assigned
-                // its alternatives.
-                let logsum_alternative =
+                // to its alternatives.
+                let alt_logsum =
                     (sum_token_frequencies + freq * (alternatives.len() - 1) as f64).ln();
 
                 // The frequencies of alternatives are increased by the
                 // frequency of the removed token.
-                let mut logprob_alternative = 0.0;
-                for n in &alternatives[id] {
-                    logprob_alternative +=
-                        ((token_frequencies[*n as usize] as f64) + freq).ln() - logsum_alternative;
+                let mut alt_logprob = 0.0;
+                for &alt_id in &alternatives[id] {
+                    alt_logprob +=
+                        ((token_frequencies[alt_id as usize] as f64) + freq).ln() - alt_logsum;
                 }
 
                 // The difference in likelihood after removing the token.
-                let loss = (freq / samples.len() as f64) * (logprob - logprob_alternative);
+                let loss = (freq / samples.len() as f64) * (logprob - alt_logprob);
                 if !loss.is_normal() {
                     panic!(
-                        "loss is f64::NaN (loss={}, freq={}, logprob={}, logprob_alternative={})",
-                        loss, freq, logprob, logprob_alternative
+                        "loss is f64::NaN (loss={}, freq={}, logprob={}, alt_logprob={})",
+                        loss, freq, logprob, alt_logprob
                     );
                 }
 
@@ -411,11 +429,12 @@ impl UnigramTrainer {
             }
         }
 
-        log::info!("Updating vocabulary");
-
-        let desired_vocab_size: usize = (self.vocab_size * 11) / 10; // * 1.1
-        let pruned_size: usize = ((vocab.len() as f64) * self.shrinking_factor) as usize;
-        let pruned_size = desired_vocab_size.max(pruned_size);
+        log::info!(
+            "Updating vocabulary vocab_size={} pruned_vocab_size={} kept={}",
+            vocab.len(),
+            pruned_size,
+            pruned_vocab.len()
+        );
 
         candidates.sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
 
@@ -426,7 +445,7 @@ impl UnigramTrainer {
             pruned_vocab.push(vocab[id].clone());
         }
 
-        Ok(pruned_vocab.to_vec())
+        Ok(pruned_vocab)
     }
 
     fn finalize(&self, model: &Unigram) -> Unigram {
@@ -442,7 +461,7 @@ impl UnigramTrainer {
 
         vocab.sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
 
-        Unigram::from(vocab)
+        Unigram::from(vocab, model.capcode)
     }
 }
 

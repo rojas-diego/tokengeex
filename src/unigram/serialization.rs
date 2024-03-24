@@ -74,10 +74,11 @@ impl Serialize for Unigram {
     where
         S: Serializer,
     {
-        let mut model = serializer.serialize_struct("Unigram", 1)?;
+        let mut model = serializer.serialize_struct("Unigram", 3)?;
         let serialized_vocab = Vocab::from(self.vocab.clone());
 
         model.serialize_field("type", "unigram")?;
+        model.serialize_field("capcode", &self.capcode)?;
         model.serialize_field("vocab", &serialized_vocab)?;
 
         model.end()
@@ -89,7 +90,7 @@ impl<'de> Deserialize<'de> for Unigram {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_struct("Unigram", &[], UnigramVisitor)
+        deserializer.deserialize_struct("Unigram", &["vocab", "type", "capcode"], UnigramVisitor)
     }
 }
 
@@ -108,6 +109,7 @@ impl<'de> Visitor<'de> for UnigramVisitor {
     {
         let mut model_type: Option<String> = None;
         let mut serialized_vocab: Option<Vocab> = None;
+        let mut capcode = false;
 
         while let Some(key) = map.next_key()? {
             match key {
@@ -116,6 +118,9 @@ impl<'de> Visitor<'de> for UnigramVisitor {
                 }
                 "vocab" => {
                     serialized_vocab = Some(map.next_value()?);
+                }
+                "capcode" => {
+                    capcode = map.next_value()?;
                 }
                 _ => {
                     return Err(serde::de::Error::unknown_field(key, &["type"]));
@@ -135,7 +140,7 @@ impl<'de> Visitor<'de> for UnigramVisitor {
             .ok_or_else(|| serde::de::Error::missing_field("vocab"))?
             .into();
 
-        Ok(Unigram::from(vocab))
+        Ok(Unigram::from(vocab, capcode))
     }
 }
 
@@ -151,9 +156,10 @@ mod tests {
             .map(|(s, f)| (s.as_bytes().to_vec(), *f))
             .collect();
 
-        let model = Unigram::from(vocab);
+        let model = Unigram::from(vocab, false);
 
         let serialized = serde_json::to_string(&model).unwrap();
+        println!("{}", serialized);
         let deserialized: Unigram = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(model.vocab, deserialized.vocab);
@@ -166,7 +172,7 @@ mod tests {
             .map(|(s, f)| (s.as_bytes().to_vec(), *f))
             .collect();
 
-        let mut model = Unigram::from(vocab);
+        let mut model = Unigram::from(vocab, false);
         model.vocab.push((vec![0x80], 4.0));
 
         let serialized = serde_json::to_string(&model).unwrap();
@@ -178,7 +184,7 @@ mod tests {
     #[test]
     fn test_serialize_deszerialize_invariants() {
         let vocab = (0..255_u8).map(|b| (vec![b], 1.0)).collect::<Vec<_>>();
-        let model = Unigram::from(vocab);
+        let model = Unigram::from(vocab, false);
 
         let serialized = serde_json::to_string(&model).unwrap();
         let deserialized: Unigram = serde_json::from_str(&serialized).unwrap();

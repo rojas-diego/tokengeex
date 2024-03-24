@@ -67,7 +67,7 @@ fn lattice(c: &mut Criterion) {
             let mut pool = VecPool::with_capacity(1024 * 128, 16);
 
             for sample in &samples {
-                lattice.from(sample.as_bytes(), 0, 1, &mut pool);
+                lattice.from(sample.as_bytes(), 0, 1, 0, &mut pool);
             }
         });
     });
@@ -83,6 +83,9 @@ fn lattice(c: &mut Criterion) {
     group.bench_function("from_populate_nodes_multithreaded", |b| {
         b.iter(|| {
             let chunk_size = std::cmp::max(1, samples.len() / rayon::current_num_threads());
+            let delete_token_id = model
+                .token_to_id("D")
+                .unwrap_or(model.vocab_size() as TokenID);
 
             samples.par_chunks(chunk_size).for_each(|chunk| {
                 let mut lattice = Lattice::default();
@@ -93,6 +96,7 @@ fn lattice(c: &mut Criterion) {
                         sample.as_bytes(),
                         (model.vocab_size()) as TokenID,
                         (model.vocab_size() + 1) as TokenID,
+                        delete_token_id,
                         &mut pool,
                     );
                     model.populate_nodes(&mut lattice);
@@ -113,12 +117,16 @@ fn lattice(c: &mut Criterion) {
                 let mut lattice = Lattice::default();
                 let mut pool = VecPool::with_capacity(1024 * 128, 16);
                 let mut frequencies = vec![0.0; model.vocab_size()];
+                let delete_token_id = model
+                    .token_to_id("D")
+                    .unwrap_or(model.vocab_size() as TokenID);
 
                 for sample in chunk {
                     lattice.from(
                         sample.as_bytes(),
                         (model.vocab_size()) as TokenID,
                         (model.vocab_size() + 1) as TokenID,
+                        delete_token_id,
                         &mut pool,
                     );
 

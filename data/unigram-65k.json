@@ -8,6 +8,7 @@
   ],
   "model": {
     "type": "unigram",
+    "capcode": true,
     "vocab": [
       { "value": ",", "score": -3.71942039414332 },
       { "value": "(D", "score": -4.1559937577828165 },

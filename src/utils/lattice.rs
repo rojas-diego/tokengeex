@@ -8,6 +8,46 @@ use std::rc::Rc;
 
 use crate::TokenID;
 
+/// A node from the lattice, that helps reconstruct the underlying `String`
+#[derive(Debug, Clone)]
+pub struct Node {
+    /// Position in the sentence.
+    pub pos: usize,
+    /// Token ID.
+    pub token_id: TokenID,
+    /// Length of the token.
+    pub token_len: usize,
+    /// Score of the token.
+    pub score: f64,
+    /// Delete marks whether the delete token needs to be pre-pended to this
+    /// token.
+    pub delete: bool,
+    /// Previous node.
+    pub prev: Option<usize>,
+    /// Score obtained from backtracking.
+    pub backtrack_score: f64,
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Node) -> bool {
+        self.token_id == other.token_id
+    }
+}
+
+impl Node {
+    pub fn new(pos: usize, token_id: TokenID, token_len: usize, score: f64, delete: bool) -> Self {
+        Self {
+            pos,
+            token_id,
+            token_len,
+            score,
+            delete,
+            prev: None,
+            backtrack_score: 0.0,
+        }
+    }
+}
+
 /// Structure to implement Viterbi algorithm to find the best encoding, or
 /// sample from all possible encodings of a given sentence.
 #[derive(Debug)]
@@ -25,42 +65,7 @@ pub struct Lattice<'a> {
 
     bos_idx: usize,
     eos_idx: usize,
-}
-
-/// A node from the lattice, that helps reconstruct the underlying `String`
-#[derive(Debug, Clone)]
-pub struct Node {
-    /// Position in the sentence.
-    pub pos: usize,
-    /// Token ID.
-    pub token_id: TokenID,
-    /// Length of the token.
-    pub token_len: usize,
-    /// Score of the token.
-    pub score: f64,
-    /// Previous node.
-    pub prev: Option<usize>,
-    /// Score obtained from backtracking.
-    pub backtrack_score: f64,
-}
-
-impl PartialEq for Node {
-    fn eq(&self, other: &Node) -> bool {
-        self.token_id == other.token_id
-    }
-}
-
-impl Node {
-    pub fn new(pos: usize, token_id: TokenID, token_len: usize, score: f64) -> Self {
-        Self {
-            pos,
-            token_id,
-            token_len,
-            score,
-            prev: None,
-            backtrack_score: 0.0,
-        }
-    }
+    delete_token_id: TokenID,
 }
 
 impl<'a> Lattice<'a> {
@@ -72,6 +77,7 @@ impl<'a> Lattice<'a> {
             end_nodes: vec![],
             bos_idx: 0,
             eos_idx: 0,
+            delete_token_id: 0,
         }
     }
 
@@ -80,9 +86,11 @@ impl<'a> Lattice<'a> {
         sentence: &'a [u8],
         bos_id: TokenID,
         eos_id: TokenID,
+        delete_token_id: TokenID,
         vec_pool: &mut VecPool,
     ) {
         self.sentence = sentence;
+        self.delete_token_id = delete_token_id;
         self.nodes.clear();
 
         // Return existing Vecs to the pool and borrow new ones as needed.
@@ -99,19 +107,28 @@ impl<'a> Lattice<'a> {
             .resize_with(sentence.len() + 1, || vec_pool.get());
 
         // Reinitialize with BOS and EOS nodes.
-        self.nodes.push(Node::new(0, bos_id, 0, 0.0));
+        self.nodes.push(Node::new(0, bos_id, 0, 0.0, false));
         self.bos_idx = 0;
-        self.nodes.push(Node::new(sentence.len(), eos_id, 0, 0.0));
+        self.nodes
+            .push(Node::new(sentence.len(), eos_id, 0, 0.0, false));
         self.eos_idx = 1;
         self.end_nodes[0].push(self.bos_idx);
         self.begin_nodes[sentence.len()].push(self.eos_idx);
     }
 
-    pub fn insert(&mut self, pos: usize, token_id: TokenID, token_len: usize, score: f64) {
+    pub fn insert(
+        &mut self,
+        pos: usize,
+        token_id: TokenID,
+        token_len: usize,
+        score: f64,
+        delete: bool,
+    ) {
         let node_idx = self.nodes.len();
         self.begin_nodes[pos].push(node_idx);
         self.end_nodes[pos + token_len].push(node_idx);
-        self.nodes.push(Node::new(pos, token_id, token_len, score));
+        self.nodes
+            .push(Node::new(pos, token_id, token_len, score, delete));
     }
 
     pub fn viterbi(&mut self) -> Vec<Node> {
@@ -145,7 +162,14 @@ impl<'a> Lattice<'a> {
         let mut results = Vec::with_capacity(sentence_len / 4);
         let mut node_idx = self.begin_nodes[sentence_len][0];
         while let Some(prev_node_idx) = self.nodes[node_idx].prev {
-            results.push(self.nodes[prev_node_idx].clone());
+            let node = self.nodes[node_idx].clone();
+
+            results.push(node.clone());
+
+            if node.delete {
+                results.push(Node::new(node.pos, self.delete_token_id, 0, 0.0, false));
+            }
+
             node_idx = prev_node_idx;
         }
 
@@ -154,6 +178,22 @@ impl<'a> Lattice<'a> {
     }
 
     pub fn nbest(&mut self, n: usize) -> Vec<Vec<Node>> {
+        fn collect_nodes_from_indices(indices: &[usize], nodes: &[Node]) -> Vec<Node> {
+            let mut result = Vec::with_capacity(indices.len());
+
+            for &i in indices {
+                let node = nodes[i].clone();
+
+                result.push(node.clone());
+
+                if node.delete {
+                    result.push(Node::new(node.pos, 0, 0, 0.0, false));
+                }
+            }
+
+            result
+        }
+
         match n {
             0 => vec![],
             1 => vec![self.viterbi()],
@@ -194,9 +234,7 @@ impl<'a> Lattice<'a> {
                         if hypotheses.len() == n {
                             return hypotheses
                                 .iter()
-                                .map(|indices| {
-                                    indices.iter().map(|&i| self.nodes[i].clone()).collect()
-                                })
+                                .map(|indices| collect_nodes_from_indices(indices, &self.nodes))
                                 .collect();
                         }
                     } else {
@@ -225,7 +263,7 @@ impl<'a> Lattice<'a> {
 
                 hypotheses
                     .iter()
-                    .map(|indices| indices.iter().map(|&i| self.nodes[i].clone()).collect())
+                    .map(|indices| collect_nodes_from_indices(indices, &self.nodes))
                     .collect()
             }
         }

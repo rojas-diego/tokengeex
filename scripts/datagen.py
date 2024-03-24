@@ -4,7 +4,9 @@ deduplicated dataset based on per-language quotas.
 """
 
 import argparse
+import glob
 import os
+import random
 import re
 import threading
 
@@ -208,6 +210,67 @@ def generate_chinese_markdown(args):
     print(f"Wrote Chinese Markdown to {args.output}.")
 
 
+def generate_infilling(args):
+    train, test = map(
+        lambda x: int(x * (1024**2)), map(float, args.infilling_quota.split(","))
+    )
+
+    print(f"Generating ({train / mb(1)} MB, {test / mb(1)} MB) for infilling")
+
+    for split in ["train", "test"]:
+        os.makedirs(f"{args.output}/{split}", exist_ok=True)
+
+    files = {
+        split: open(f"{args.output}/{split}/infilling.bin", "wb")
+        for split in ["train", "test"]
+    }
+
+    written = 0
+
+    inputs = glob.glob(f"{args.output}/train/*.bin")
+    inputs = [open(input, "rb") for input in inputs]
+
+    infilling = []
+    for f in inputs:
+        content = f.read()
+        content = content.decode("utf-8")
+        content = content.split("\0")
+        infilling.extend(content[: len(content) // 10])
+        f.close()
+
+    stop = False
+    while not stop:
+        content = random.choice(infilling)
+
+        # Split the content into chunks of 10% characters
+        chunk_size = max(32, min(len(content) // 10, 128))
+        chunks = [
+            content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
+        ]
+
+        if len(chunks) < 10:
+            continue
+
+        for i in range(10):
+            if written < test:
+                f = files["test"]
+            elif written < test + train:
+                f = files["train"]
+            else:
+                stop = True
+
+            content = random.choice(chunks)
+            encoded = content.encode("utf-8")
+            f.write(encoded)
+            f.write(b"\0")
+            written += len(encoded) + 1
+
+    for f in files.values():
+        f.close()
+
+    print(f"Wrote infilling to {args.output}.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -226,6 +289,11 @@ if __name__ == "__main__":
         "--chinese-markdown-quota",
         type=str,
         help="The quota for Chinese Markdown data in the form {train_mb},{test_mb}",
+    )
+    parser.add_argument(
+        "--infilling-quota",
+        type=str,
+        help="The quota for infilling data in the form {train_mb},{test_mb}",
     )
     args = parser.parse_args()
 
@@ -253,3 +321,6 @@ if __name__ == "__main__":
 
     if args.chinese_markdown_quota:
         generate_chinese_markdown(args)
+
+    if args.infilling_quota:
+        generate_infilling(args)

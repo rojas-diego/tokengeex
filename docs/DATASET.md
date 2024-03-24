@@ -58,6 +58,12 @@ From [The Stack v1.2 (Deduplicated)](https://huggingface.co/datasets/bigcode/the
 | CMake      | 0.05       | 5         |
 | Makefile   | 0.05       | 5         |
 
+Obtained from [The Stack v1.2 (Deduplicated)](https://huggingface.co/datasets/bigcode/the-stack-dedup):
+
+| Lang      | Train (GB) | Test (MB) |
+| --------- | ---------- | --------- |
+| Infilling | 0.5        | 50        |
+
 ## Download
 
 The dataset can be accessed through `storage.rojasdiego.com/tokengeex/data/{split}/{lang}.bin`. Each file is a NULL byte separated array of UTF-8 encoded files.

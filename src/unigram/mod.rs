@@ -105,6 +105,8 @@ impl Unigram {
             0.0
         };
 
+        assert!(self.capcode == delete_marker_id.is_some());
+
         for pos in 0..input.len() {
             let suffix = &input[pos..];
 
@@ -118,23 +120,27 @@ impl Unigram {
             ] {
                 if !prefix.is_empty() {
                     if !self.capcode || pos == 0 {
-                        continue;
+                        break;
                     }
 
-                    match char::from_u32(input[pos - 1] as u32) {
-                        Some(prev_char) => {
-                            if !prev_char.is_lowercase() && !prev_char.is_ascii_digit() {
-                                continue;
+                    let prev_char = char::from_u32(input[pos - 1] as u32);
+                    let curr_char = char::from_u32(input[pos] as u32);
+
+                    for char in [prev_char, curr_char] {
+                        match char {
+                            Some(c) => {
+                                if !c.is_lowercase() && !c.is_ascii_digit() {
+                                    break;
+                                }
                             }
-                        }
-                        None => {
-                            continue;
+                            None => {
+                                break;
+                            }
                         }
                     }
                 }
 
                 buff.clear();
-
                 for (id, len) in self
                     .trie
                     .common_prefix_search(prefix.iter().chain(suffix.iter()).copied(), &mut buff)
@@ -204,23 +210,27 @@ impl Model for Unigram {
             ] {
                 if !prefix.is_empty() {
                     if !self.capcode || pos == 0 {
-                        continue;
+                        break;
                     }
 
-                    match char::from_u32(input[pos - 1] as u32) {
-                        Some(prev_char) => {
-                            if !prev_char.is_lowercase() && !prev_char.is_ascii_digit() {
-                                continue;
+                    let prev_char = char::from_u32(input[pos - 1] as u32);
+                    let curr_char = char::from_u32(input[pos] as u32);
+
+                    for char in [prev_char, curr_char] {
+                        match char {
+                            Some(c) => {
+                                if !c.is_lowercase() && !c.is_ascii_digit() {
+                                    break;
+                                }
                             }
-                        }
-                        None => {
-                            continue;
+                            None => {
+                                break;
+                            }
                         }
                     }
                 }
 
                 buff.clear();
-
                 for (id, len) in self
                     .trie
                     .common_prefix_search(prefix.iter().chain(suffix.iter()).copied(), &mut buff)

@@ -116,8 +116,21 @@ impl Unigram {
                 (b"D ".as_slice(), false, 0.0),
                 (b" ".as_slice(), true, delete_marker_score),
             ] {
-                if !prefix.is_empty() && !self.capcode {
-                    continue;
+                if !prefix.is_empty() {
+                    if !self.capcode || pos == 0 {
+                        continue;
+                    }
+
+                    match char::from_u32(input[pos - 1] as u32) {
+                        Some(prev_char) => {
+                            if !prev_char.is_lowercase() && !prev_char.is_ascii_digit() {
+                                continue;
+                            }
+                        }
+                        None => {
+                            continue;
+                        }
+                    }
                 }
 
                 buff.clear();
@@ -189,8 +202,21 @@ impl Model for Unigram {
                 (b"D ".as_slice(), false, 0.0),
                 (b" ".as_slice(), true, delete_marker_score),
             ] {
-                if !prefix.is_empty() && !self.capcode {
-                    continue;
+                if !prefix.is_empty() {
+                    if !self.capcode || pos == 0 {
+                        continue;
+                    }
+
+                    match char::from_u32(input[pos - 1] as u32) {
+                        Some(prev_char) => {
+                            if !prev_char.is_lowercase() && !prev_char.is_ascii_digit() {
+                                continue;
+                            }
+                        }
+                        None => {
+                            continue;
+                        }
+                    }
                 }
 
                 buff.clear();

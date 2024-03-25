@@ -151,7 +151,7 @@ impl UnigramTrainer {
         samples.maybe_par_chunks(chunk_size).for_each(|chunk| {
             // For each sample, we iterate over snippets of max
             // `MAX_SAMPLE_LENGTH` bytes.
-            const MAX_SAMPLE_LENGTH: usize = 8192;
+            const MAX_SAMPLE_LENGTH: usize = 8192 * 10;
 
             let tid = unsafe { std::mem::transmute::<ThreadId, u64>(std::thread::current().id()) };
             let start = std::time::Instant::now();

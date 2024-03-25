@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-pub const BASE_RE: &str = r#"(?:^.$)|(?:^(?:[[:punct:]](?:(?:[A-Za-z']+)|(?:[0-9]{1,4})))$)|(?:^(?:(?:(?:[A-Za-z']+)|(?:[0-9]{1,4}))[[:punct:]])$)|(?:^(?:(?:[ [:punct:]]+)?(?:[[:space:]]*))$)|(?:^(?:[[:space:]]*(?:[ [:punct:]]+)?)$)|(?:^(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+)$)|(?:^(?:(?:[a-z]+)://(?:(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*)(?:\.(?:(?:[A-Za-z']+)(?:-(?:[A-Za-z']+))*))*)(?:\.(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}))?(?::[0-9]{1,5})?)$)|(?:^(?:</? ?[A-Za-z]+(?:>|/>| />)?)$)|(?:^(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))?(?:(?:[_-]+)(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))*(?:[_-]*))$)|(?:^(?: ?(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?))))$)|(?:^(?: ?(?:(?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))(?: (?:(?:(?:[0-9]{1,4})|(?:(?:[A-Za-z']+)(?:(?:[0-9]{1,4})(?:[A-Za-z']+))*(?:[0-9]{1,4})?)))){1,3}))$)"#;
+pub const BASE_RE: &str = r#"(?:^.$)|(?:^ ?(?:[a-z]+):\/\/(?:(?:[a-z0-9]+\.?))+(?::[0-9]{1,5})?\/?$)|(?:^(?:[\[{("'][A-Za-z0-9]+[\]})"'])$)|(?:^(?:[0-9]{1,4}(?:\.[0-9]{1,3})?)$)|(?:^[\/\\_\-\.][a-z0-9]+$)|(?:^ ?[@&!?#$\*][a-z0-9]+$)|(?:^ [0-9]+%$)|(?:^(?: ?(?:(?:[0-9]{1,4}(?:[A-Za-z]+)?)|(?:[A-Za-z]+(?:[0-9]{1,4})?)|[A-Za-z]+))$)|(?:^ ?(?:(?:[0-9]{1,4}(?:[a-zA-Z]+)?)|(?:[a-zA-Z]+(?:[0-9]{1,4})?)|[A-Z]+)(?:(?:[_\-.]|::)(?:(?:[0-9]{1,4}(?:[a-zA-Z]+)?)|(?:[a-zA-Z]+(?:[0-9]{1,4})?)|[A-Z]+))*$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:(?:(?:[[:punct:] DCU]+)?[[:space:]DCU]*)|(?:[[:space:]DCU]*(?:[[:punct:] DCU]+)?))$)|(?:^(?:<\/?[a-z]+(?:>|(?:\/>)|(?: \/>))?)$)|(?:^ ?(?:(?:[A-Za-z]+(?:'[A-Za-z]+)?)|(?:[0-9]{1,4}))(?:(?: [A-Za-z]+(?:'[A-Za-z]+)?)|(?: [0-9]{1,4})){0,2}$)"#;
 pub const CAPCODE_RE: &str = r#"(?:^.$)|(?:^ (?:[a-z]+)://(?:(?:(?:(?:D [a-z0-9]+).)*(?: [a-z0-9]+)?D?)|(?:D [0-9]{1,3}(?:\.D [0-9]{1,3}){3}))(?:D [0-9]{1,5})?(?:/D)?$)|(?:^(?:[\[{("']D[UC]? [a-z0-9]+[\]})"'])$)|(?:^(?:D?[UC]? ?[0-9]{1,4}(?:.D [0-9]{1,2})?)$)|(?:^[\/\\_\-.]D[UC]? [a-z0-9]+$)|(?:^ ?[@&!?#$\*]D[UC]? [a-z0-9]+$)|(?:^ [0-9]+%$)|(?:^D?[UC]? ?(?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*)$)|(?:^[UC]? ?(?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*)(?:(?:[_\-.]|::)D[UC]? (?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*))*$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:(?:(?:[[:punct:] DCU]+)?[[:space:]DCU]*)|(?:[[:space:]DCU]*(?:[[:punct:] DCU]+)?))$)|(?:^(?:<\/?D[UC]? [a-z]+(?:>|(?:\/>)|(?: \/>))?)$)|(?:^(?:[UC]?(?:(?: [a-z]+(?:'[a-z]+)?))|(?: [0-9]{1,4})){1,3}$)"#;
 
 pub struct VocabularyGenerator {
@@ -504,14 +504,26 @@ mod tests {
         assert_regex_matches(
             &capcode_regex,
             &[
+                // Words
                 "a",
-                " ",
+                "abc",
+                // Numbers
+                "1",
+                "123",
+                " 123",
+                " 1000.D 0",
+                // Whitespace
+                "\n\n\n",
+                "    ",
+                // Spaced URL
                 " https://D word",
                 " https://D word.D com",
+                // Wrapped in punctuation
                 "(D word)",
                 "[D 1]",
-                "123",
-                " 1000.D 0",
+                // Paths
+                // "/D word/D word",
+                // Prefix Punctuation
                 "/D word",
                 ".D word",
                 "*D word",
@@ -519,17 +531,22 @@ mod tests {
                 "@DU word",
                 " &D word",
                 " 10%",
+                // Camel case
                 "DC myDC var",
                 "myDC varDC myDC var",
                 " 123DC word",
                 " wordD 123",
+                // Snake case
                 " word_D word",
                 " wordD 123_D word",
+                "U word_DU word",
+                // Multi-word
                 " in order to",
                 " don't mind the",
-                "U word_DU word",
+                // Chinese
                 "好",
                 "你好",
+                // Punctuation with whitespace
                 "\n\n} DCU",
                 "}\n\nDCU",
             ],
@@ -545,5 +562,333 @@ mod tests {
         );
 
         println!("{}", capcode_regex);
+    }
+
+    fn maybe_spaced_url_regex() -> Regex {
+        let protocol = r#"(?:[a-z]+)"#;
+        let subdomains = r#"(?:(?:[a-z0-9]+\.?))+"#;
+        let port = r#"(?::[0-9]{1,5})"#;
+
+        let re = format!(r#"^ ?{}:\/\/{}{}?\/?$"#, protocol, subdomains, port);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[
+                " http://www.google.com",
+                "http://www.google.com/",
+                " http://www.google.com:8443",
+                "http://www.google.com:8443/",
+                " https://127.0.0.1",
+                "https://127.0.0.1:80",
+                " https://127.0.0.1:80/",
+                "https://www.",
+                " https://www",
+                "tcp://github.com",
+            ],
+            &[],
+        );
+
+        re
+    }
+
+    fn wrapped_in_punctuation_regex() -> Regex {
+        let pattern = r#"(?:[\[{("'][A-Za-z0-9]+[\]})"'])"#;
+
+        let re = format!("^{}$", pattern);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[
+                "[word]", "[word]", "[1]", "(word)", "(123)", "{word}", "{123}", "[WORD]",
+                "[Word]", "'word'", "'123'", "\"word\"", "\"123\"",
+            ],
+            &[],
+        );
+
+        re
+    }
+
+    fn number_regex() -> Regex {
+        let number = r#"(?:[0-9]{1,4}(?:\.[0-9]{1,3})?)"#;
+
+        let re = format!("^{}$", number);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &["1", "123", "1234", "1000.0", "50.1"],
+            &["12345", " 12345", " 0.123"],
+        );
+
+        re
+    }
+
+    fn punctuation_word_regex() -> Regex {
+        let pattern = r#"[\/\\_\-\.][a-z0-9]+"#;
+
+        let re = format!("^{}$", pattern);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(&re, &[".word", "/123", "\\word"], &[" /word"]);
+
+        re
+    }
+
+    fn space_punctuation_word_regex() -> Regex {
+        let pattern = r#" ?[@&!?#$\*][a-z0-9]+"#;
+
+        let re = format!("^{}$", pattern);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(&re, &[" &word", "@123", " !word"], &[":word"]);
+
+        re
+    }
+
+    fn space_word_punctuation_regex() -> Regex {
+        let pattern = r#" [0-9]+%"#;
+
+        let re = format!("^{}$", pattern);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(&re, &[" 10%", " 100%"], &["10%"]);
+
+        re
+    }
+
+    fn camel_case_regex() -> Regex {
+        let word_and_number = r#"(?:[0-9]{1,4}(?:[A-Za-z]+)?)|(?:[A-Za-z]+(?:[0-9]{1,4})?)"#;
+        let words = r#"[A-Za-z]+"#;
+        let camel_case = format!("(?: ?(?:{}|{}))", word_and_number, words);
+
+        let re = format!("^{}$", camel_case);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[
+                "32",
+                " i32",
+                "123word",
+                "word",
+                " WORDword",
+                "123word",
+                " wordWordWord",
+            ],
+            &["12345", " 12345", " word12345"],
+        );
+
+        re
+    }
+
+    fn snake_case_namespaces_regex() -> Regex {
+        let word_and_number = r#"(?:[0-9]{1,4}(?:[a-zA-Z]+)?)|(?:[a-zA-Z]+(?:[0-9]{1,4})?)"#;
+        let words = r#"[A-Z]+"#;
+        let snake_case = format!(
+            " ?(?:{}|{})(?:(?:[_\\-.]|::|->)(?:{}|{}))*",
+            word_and_number, words, word_and_number, words
+        );
+
+        let re = format!("^{}$", snake_case);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[
+                "my_var",
+                " my_123",
+                " uint_32_t",
+                "std.var",
+                " name.space",
+                " name::space",
+                " hello->world",
+                " hello-world",
+            ],
+            &["12345", " 12345", " word12345"],
+        );
+
+        re
+    }
+
+    fn html_tag_regex() -> Regex {
+        let html_tag = r#"(?:<\/?[a-z]+(?:>|(?:\/>)|(?: \/>))?)"#;
+
+        let re = format!("^{}$", html_tag);
+        let re = Regex::new(&re).unwrap();
+        assert_regex_matches(
+            &re,
+            &[
+                "<div>", "</div>", "<div>", "<div>", "<img/>", "<img />", "<div",
+            ],
+            &["a>", "<a /", "<a / >"],
+        );
+
+        re
+    }
+
+    fn multiple_words_regex() -> Regex {
+        let pattern = r#" ?(?:(?:[A-Za-z]+(?:'[A-Za-z]+)?)|(?:[0-9]{1,4}))(?:(?: [A-Za-z]+(?:'[A-Za-z]+)?)|(?: [0-9]{1,4})){0,2}"#;
+
+        let re = format!("^{}$", pattern);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[
+                " multiple words",
+                " 2 words",
+                " don't do",
+                "word",
+                " word",
+                " my 123 word",
+                "WARRANTY WHATEVER",
+            ],
+            &["four words or more"],
+        );
+
+        re
+    }
+
+    fn paths_regex() -> Regex {
+        let path = r#"(?:\/[a-zA-Z0-9]+)+"#;
+
+        let re = format!("^{}$", path);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[
+                "/hello/123",
+                "/hello/123/456",
+                "/hello/123/456/789",
+                "/hello/123/456/789/abc",
+                "/hello/123/456/789/abc/def",
+            ],
+            &[],
+        );
+
+        re
+    }
+
+    #[test]
+    fn test_base_regexes() {
+        // Single character
+        let lone_char = Regex::new(r#"^.$"#).unwrap();
+        // Maybe Space + URL
+        let maybe_spaced_url = maybe_spaced_url_regex();
+        // Wrapped in punctuation
+        let wrapped_in_punctuation = wrapped_in_punctuation_regex();
+        // Number and decimal number
+        let number = number_regex();
+        // Punctuation + word
+        let punctuation_word = punctuation_word_regex();
+        // Space + punctuation + word
+        let space_punctuation_word = space_punctuation_word_regex();
+        // Space + word + punctuation
+        let space_word_punctuation = space_word_punctuation_regex();
+        // Camel case
+        let camel_case = camel_case_regex();
+        // Snake case
+        let snake_case = snake_case_namespaces_regex();
+        // Paths
+        let paths = paths_regex();
+        // Chinese
+        let chinese = chinese_regex();
+        // Punctuation with whitespace
+        let punctuation_whitespace = punctuation_whitespace();
+        // HTML tag
+        let html_tag = html_tag_regex();
+        // Multiple words
+        let multiple_words = multiple_words_regex();
+
+        let base_regex = Regex::new(
+            &[
+                lone_char,
+                maybe_spaced_url,
+                wrapped_in_punctuation,
+                number,
+                punctuation_word,
+                paths,
+                space_punctuation_word,
+                space_word_punctuation,
+                camel_case,
+                snake_case,
+                chinese,
+                punctuation_whitespace,
+                html_tag,
+                multiple_words,
+            ]
+            .map(|re| format!("(?:{})", re.as_str()))
+            .join("|"),
+        )
+        .unwrap();
+        assert_regex_matches(
+            &base_regex,
+            &[
+                // Words
+                "a",
+                "abc",
+                " word",
+                // Numbers
+                "1",
+                "123",
+                " 456",
+                "123.456",
+                " 1000.0",
+                // Whitespace
+                "\n\n\n",
+                "    ",
+                // Maybe Spaced URL
+                " http://www.google.com",
+                "http://github.com:8443/",
+                // Wrapped in punctuation
+                "(word)",
+                "[1]",
+                "{WORD}",
+                // Prefix Punctuation
+                "/word",
+                ".word",
+                "*word",
+                " *word",
+                "@word",
+                " &word",
+                " 10%",
+                // Camel case
+                "myVar",
+                "my123",
+                "ManyWordsTOGETHER",
+                // Snake case
+                "word_word",
+                "word_123_word",
+                "MANY_WORDS",
+                // Namespaces
+                "/hello/123",
+                "System.IO",
+                "std::var",
+                // Multi-word
+                "multiple words",
+                "don't do",
+                " in order to",
+                // Chinese
+                "好",
+                "你好",
+                // Punctuation with whitespace
+                "\n\n}",
+                "}\n\n",
+                // HTML tag
+                "<div>",
+                "</div>",
+                "<img/>",
+                "<img />",
+                "<div",
+            ],
+            &[
+                // Too long numbers
+                "12345", " 12345",
+            ],
+        );
+        println!("{}", base_regex);
     }
 }

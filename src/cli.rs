@@ -341,8 +341,6 @@ fn train(
 
     let mut logfile = FileLogger::new(logfile);
 
-    let capcode = processors.iter().any(|p| p == "capcode");
-
     let processors = load_processors(processors);
     let added_tokens = load_tokens_files(added_tokens_files, "added");
     let suggested_tokens = load_tokens_files(suggested_tokens_files, "suggested");
@@ -400,15 +398,14 @@ fn train(
                 format_bytes_as_mb(vocab_total_bytes as u64)
             );
 
-            let mut model = unigram::Unigram::from(vocab, capcode);
+            let mut model = unigram::Unigram::from(vocab, false);
 
             log::info!(
-                "Training unigram model. vocab_size={} shrinking_factor={} num_sub_iterations={} sample_regularization={:?}  capcode={}",
+                "Training unigram model. vocab_size={} shrinking_factor={} num_sub_iterations={} sample_regularization={:?}",
                 vocab_size,
                 unigram_shrinking_factor,
                 unigram_num_sub_iterations,
                 unigram_sample_regularization,
-                capcode,
             );
             let mut trainer = unigram::UnigramTrainer::new(
                 vocab_size,

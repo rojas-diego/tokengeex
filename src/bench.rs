@@ -67,7 +67,7 @@ fn lattice(c: &mut Criterion) {
             let mut pool = VecPool::with_capacity(1024 * 128, 16);
 
             for sample in &samples {
-                lattice.from(sample.as_bytes(), 0, 1, 0, &mut pool);
+                lattice.from(sample.as_bytes(), 0, 1, 0, 0.0, &mut pool);
             }
         });
     });
@@ -86,6 +86,11 @@ fn lattice(c: &mut Criterion) {
             let delete_token_id = model
                 .token_to_id("D")
                 .unwrap_or(model.vocab_size() as TokenID);
+            let delete_token_score = model
+                .vocab()
+                .get(delete_token_id as usize)
+                .map(|(_, score)| *score)
+                .unwrap_or(0.0);
 
             samples.par_chunks(chunk_size).for_each(|chunk| {
                 let mut lattice = Lattice::default();
@@ -97,6 +102,7 @@ fn lattice(c: &mut Criterion) {
                         (model.vocab_size()) as TokenID,
                         (model.vocab_size() + 1) as TokenID,
                         delete_token_id,
+                        delete_token_score,
                         &mut pool,
                     );
                     model.populate_nodes(&mut lattice);
@@ -120,6 +126,11 @@ fn lattice(c: &mut Criterion) {
                 let delete_token_id = model
                     .token_to_id("D")
                     .unwrap_or(model.vocab_size() as TokenID);
+                let delete_token_score = model
+                    .vocab()
+                    .get(delete_token_id as usize)
+                    .map(|(_, score)| *score)
+                    .unwrap_or(0.0);
 
                 for sample in chunk {
                     lattice.from(
@@ -127,6 +138,7 @@ fn lattice(c: &mut Criterion) {
                         (model.vocab_size()) as TokenID,
                         (model.vocab_size() + 1) as TokenID,
                         delete_token_id,
+                        delete_token_score,
                         &mut pool,
                     );
 

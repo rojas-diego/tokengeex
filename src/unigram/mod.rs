@@ -105,7 +105,7 @@ impl Unigram {
             0.0
         };
 
-        assert!(self.capcode == delete_marker_id.is_some());
+        assert!(!self.capcode || delete_marker_id.is_some());
 
         for pos in 0..input.len() {
             let suffix = &input[pos..];
@@ -113,10 +113,10 @@ impl Unigram {
             // "two|words" -> "two", "words"
             // "two|words" -> "two", "D words"
             // "two|words" -> "two", "D", " words"
-            for (prefix, delete, penalty) in &[
-                (b"".as_slice(), false, 0.0),
-                (b"D ".as_slice(), false, 0.0),
-                (b" ".as_slice(), true, delete_marker_score),
+            for (prefix, skip, delete, penalty) in &[
+                (b"".as_slice(), 0, false, 0.0),
+                (b"D ".as_slice(), 4, false, 0.0),
+                (b" ".as_slice(), 3, true, delete_marker_score),
             ] {
                 if !prefix.is_empty() {
                     if !self.capcode || pos == 0 {
@@ -129,7 +129,7 @@ impl Unigram {
                     for char in [prev_char, curr_char] {
                         match char {
                             Some(c) => {
-                                if !c.is_lowercase() && !c.is_ascii_digit() {
+                                if !c.is_ascii_lowercase() && !c.is_ascii_digit() {
                                     break;
                                 }
                             }
@@ -144,7 +144,7 @@ impl Unigram {
                 for (id, len) in self
                     .trie
                     .common_prefix_search(prefix.iter().chain(suffix.iter()).copied(), &mut buff)
-                    .filter(|(_, len)| *len > prefix.len() as u32)
+                    .filter(|(_, len)| *len > *skip as u32)
                     .map(|(id, len)| (id, (len as usize) - prefix.len()))
                 {
                     let score = &self.vocab[id as usize].1;
@@ -203,10 +203,10 @@ impl Model for Unigram {
             // "two|words" -> "two", "words"
             // "two|words" -> "two", "D words"
             // "two|words" -> "two", "D", " words"
-            for (prefix, delete, penalty) in &[
-                (b"".as_slice(), false, 0.0),
-                (b"D ".as_slice(), false, 0.0),
-                (b" ".as_slice(), true, delete_marker_score),
+            for (prefix, skip, delete, penalty) in &[
+                (b"".as_slice(), 0, false, 0.0),
+                (b"D ".as_slice(), 4, false, 0.0),
+                (b" ".as_slice(), 3, true, delete_marker_score),
             ] {
                 if !prefix.is_empty() {
                     if !self.capcode || pos == 0 {
@@ -219,7 +219,7 @@ impl Model for Unigram {
                     for char in [prev_char, curr_char] {
                         match char {
                             Some(c) => {
-                                if !c.is_lowercase() && !c.is_ascii_digit() {
+                                if !c.is_ascii_lowercase() && !c.is_ascii_digit() {
                                     break;
                                 }
                             }
@@ -234,7 +234,7 @@ impl Model for Unigram {
                 for (id, len) in self
                     .trie
                     .common_prefix_search(prefix.iter().chain(suffix.iter()).copied(), &mut buff)
-                    .filter(|(_, len)| *len > prefix.len() as u32)
+                    .filter(|(_, len)| *len > *skip as u32)
                     .map(|(id, len)| (id, (len as usize) - prefix.len()))
                 {
                     let node = &dp[pos + len];
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_encode() {
-        let vocab = [("a", 1.0), ("b", 2.0), ("c", 3.0), ("ab", 4.0)]
+        let vocab = [("a", -3.0), ("b", -3.0), ("c", -3.0), ("ab", -4.0)]
             .iter()
             .map(|(s, f)| (s.as_bytes().to_vec(), *f))
             .collect();

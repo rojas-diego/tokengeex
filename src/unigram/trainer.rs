@@ -133,10 +133,16 @@ impl UnigramTrainer {
         let e_step_start = std::time::Instant::now();
         let num_samples = samples.len();
         let num_samples_processed = std::sync::atomic::AtomicUsize::new(0);
+        let num_bytes_processed = std::sync::atomic::AtomicUsize::new(0);
 
         let delete_token_id = model
             .token_to_id("D")
             .unwrap_or(model.vocab_size() as TokenID);
+        let delete_token_score = model
+            .vocab
+            .get(delete_token_id as usize)
+            .map(|(_, s)| *s)
+            .unwrap_or(0.0);
         assert!(
             !model.capcode || delete_token_id != model.vocab_size() as TokenID,
             "capcode is enabled but the delete token is not in the vocabulary"
@@ -149,7 +155,7 @@ impl UnigramTrainer {
 
             let tid = unsafe { std::mem::transmute::<ThreadId, u64>(std::thread::current().id()) };
             let start = std::time::Instant::now();
-            let mut processed_bytes = 0;
+            let mut tl_num_bytes_processed = 0;
             let mut expected_frequencies = vec![0.0; model.vocab.len()];
             let mut lattice = Lattice::default();
             let mut pool = VecPool::with_capacity(MAX_SAMPLE_LENGTH, 16);
@@ -167,6 +173,7 @@ impl UnigramTrainer {
                         (model.vocab.len() + 1) as TokenID,
                         (model.vocab.len() + 2) as TokenID,
                         delete_token_id,
+                        delete_token_score,
                         &mut pool,
                     );
                     model.populate_nodes(&mut lattice);
@@ -181,8 +188,7 @@ impl UnigramTrainer {
                     }
                 }
 
-                processed_bytes += sample.len();
-                num_samples_processed.fetch_add(1, Relaxed);
+                tl_num_bytes_processed += sample.len();
             }
 
             // Merge the expected frequencies to the global expected frequencies
@@ -197,19 +203,23 @@ impl UnigramTrainer {
                 }
             }
 
-            let total_samples_processed = num_samples_processed.load(Relaxed);
+            let total_bytes_processed = num_bytes_processed
+                .fetch_add(tl_num_bytes_processed, Relaxed)
+                + tl_num_bytes_processed;
+            let total_samples_processed =
+                num_samples_processed.fetch_add(chunk.len(), Relaxed) + chunk.len();
+
             let percent_done = (total_samples_processed as f64 / num_samples as f64) * 100.0;
             let eta =
                 (e_step_start.elapsed().as_secs_f64() / percent_done) * (100.0 - percent_done);
 
             log::debug!(
-                "Worker {:>3} | ETA {:>5}s | {:>6.2}% | {:>5} samples in {:>3}s | {:>4.2}MB/s",
+                "Worker {:>3} | ETA {:>5}s | {:>6.2}% | Task {:>4.2}MB/s | Thread {:>4.2}MB/s",
                 tid,
                 eta.round(),
                 percent_done,
-                chunk.len(),
-                start.elapsed().as_secs_f64() as usize,
-                mb_per_sec(processed_bytes, start),
+                mb_per_sec(total_bytes_processed, e_step_start),
+                mb_per_sec(tl_num_bytes_processed, start),
             );
         });
 
@@ -226,7 +236,7 @@ impl UnigramTrainer {
     ) -> Vec<ScoredToken> {
         assert_eq!(vocab.len(), expected_frequencies.len());
 
-        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.25;
+        const EXPECTED_FREQUENCY_THRESHOLD: f64 = 0.5;
 
         let mut alternative_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
 
@@ -292,6 +302,11 @@ impl UnigramTrainer {
         let delete_token_id = model
             .token_to_id("D")
             .unwrap_or(model.vocab_size() as TokenID);
+        let delete_token_score = model
+            .vocab
+            .get(delete_token_id as usize)
+            .map(|(_, s)| *s)
+            .unwrap_or(0.0);
 
         // If capcode is enabled, the delete token should not be in the
         // vocabulary.
@@ -304,7 +319,14 @@ impl UnigramTrainer {
         let mut lattice = Lattice::default();
         let mut pool = VecPool::with_capacity(MAX_TOKEN_LENGTH, 16);
         for (id, (token, _)) in vocab.iter().enumerate() {
-            lattice.from(token, bos_id, eos_id, delete_token_id, &mut pool);
+            lattice.from(
+                token,
+                bos_id,
+                eos_id,
+                delete_token_id,
+                delete_token_score,
+                &mut pool,
+            );
             model.populate_nodes(&mut lattice);
 
             // The second best path is the alternative to the best path. The

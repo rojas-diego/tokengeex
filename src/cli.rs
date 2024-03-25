@@ -403,11 +403,12 @@ fn train(
             let mut model = unigram::Unigram::from(vocab, capcode);
 
             log::info!(
-                "Training unigram model. vocab_size={} shrinking_factor={} num_sub_iterations={} sample_regularization={:?}",
+                "Training unigram model. vocab_size={} shrinking_factor={} num_sub_iterations={} sample_regularization={:?}  capcode={}",
                 vocab_size,
                 unigram_shrinking_factor,
                 unigram_num_sub_iterations,
-                unigram_sample_regularization
+                unigram_sample_regularization,
+                capcode,
             );
             let mut trainer = unigram::UnigramTrainer::new(
                 vocab_size,

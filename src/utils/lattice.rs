@@ -66,6 +66,7 @@ pub struct Lattice<'a> {
     bos_idx: usize,
     eos_idx: usize,
     delete_token_id: TokenID,
+    delete_token_score: f64,
 }
 
 impl<'a> Lattice<'a> {
@@ -78,6 +79,7 @@ impl<'a> Lattice<'a> {
             bos_idx: 0,
             eos_idx: 0,
             delete_token_id: 0,
+            delete_token_score: 0.0,
         }
     }
 
@@ -87,10 +89,12 @@ impl<'a> Lattice<'a> {
         bos_id: TokenID,
         eos_id: TokenID,
         delete_token_id: TokenID,
+        delete_token_score: f64,
         vec_pool: &mut VecPool,
     ) {
         self.sentence = sentence;
         self.delete_token_id = delete_token_id;
+        self.delete_token_score = delete_token_score;
         self.nodes.clear();
 
         // Return existing Vecs to the pool and borrow new ones as needed.
@@ -129,6 +133,10 @@ impl<'a> Lattice<'a> {
         self.end_nodes[pos + token_len].push(node_idx);
         self.nodes
             .push(Node::new(pos, token_id, token_len, score, delete));
+
+        if delete {
+            self.insert(pos, self.delete_token_id, 0, self.delete_token_score, false);
+        }
     }
 
     pub fn viterbi(&mut self) -> Vec<Node> {

@@ -45,9 +45,7 @@ impl PyTokenizer {
     }
 
     fn encode_batch(&self, texts: Vec<&str>) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
-        self.tokenizer
-            .encode_batch(texts.iter())
-            .map_err(|e| e.into())
+        self.tokenizer.encode_batch(texts).map_err(|e| e.into())
     }
 
     fn encode_ordinary_batch(
@@ -55,7 +53,7 @@ impl PyTokenizer {
         texts: Vec<&str>,
     ) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
         self.tokenizer
-            .encode_ordinary_batch(texts.iter())
+            .encode_ordinary_batch(texts)
             .map_err(|e| e.into())
     }
 
@@ -75,7 +73,7 @@ impl PyTokenizer {
         include_special_tokens: bool,
     ) -> Result<Vec<String>, PyTokenGeeXError> {
         self.tokenizer
-            .decode_batch(ids.iter(), include_special_tokens)
+            .decode_batch(ids, include_special_tokens)
             .map_err(|e| e.into())
     }
 

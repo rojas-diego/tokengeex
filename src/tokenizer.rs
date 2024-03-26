@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
 
 use crate::{
@@ -123,12 +124,11 @@ impl Tokenizer {
     /// Encode multiple samples at once.
     pub fn encode_batch<I>(&self, inputs: I) -> Result<Vec<Vec<u32>>>
     where
-        I: Iterator + Send,
-        I::Item: AsRef<str> + Send,
+        I: IntoParallelIterator,
+        I::Item: AsRef<str>,
     {
         inputs
-            .into_iter()
-            .maybe_par_bridge()
+            .into_par_iter()
             .map(|s| self.encode(s.as_ref()))
             .collect()
     }
@@ -136,12 +136,11 @@ impl Tokenizer {
     /// Encode multiple samples at once without special tokens.
     pub fn encode_ordinary_batch<I>(&self, inputs: I) -> Result<Vec<Vec<u32>>>
     where
-        I: Iterator + Send,
-        I::Item: AsRef<str> + Send,
+        I: IntoParallelIterator,
+        I::Item: AsRef<str>,
     {
         inputs
-            .into_iter()
-            .maybe_par_bridge()
+            .into_par_iter()
             .map(|s| self.encode_ordinary(s.as_ref()))
             .collect()
     }
@@ -193,12 +192,11 @@ impl Tokenizer {
 
     pub fn decode_batch<I>(&self, inputs: I, include_special_tokens: bool) -> Result<Vec<String>>
     where
-        I: Iterator + Send,
-        I::Item: AsRef<[TokenID]> + Send,
+        I: IntoParallelIterator,
+        I::Item: AsRef<[TokenID]>,
     {
         inputs
-            .into_iter()
-            .maybe_par_bridge()
+            .into_par_iter()
             .map(|s| self.decode(s.as_ref(), include_special_tokens))
             .collect()
     }

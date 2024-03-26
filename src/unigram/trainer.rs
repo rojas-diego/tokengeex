@@ -439,3 +439,21 @@ fn digamma(mut x: f64) -> f64 {
         - (127.0 / 30720.0) * xx4 * xx4;
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_digamma() {
+        let sum = 111111.0;
+        let logsum = digamma(sum);
+
+        println!("{}", digamma(1.0) - logsum);
+        println!("{}", digamma(10.0) - logsum);
+        println!("{}", digamma(100.0) - logsum);
+        println!("{}", digamma(1000.0) - logsum);
+        println!("{}", digamma(10000.0) - logsum);
+        println!("{}", digamma(100000.0) - logsum);
+    }
+}

@@ -88,6 +88,8 @@ mod flags {
                 optional --score-scale-factor score_scale_factor: f64
                 /// Max merge length
                 optional --max-merge-length max_merge_length: usize
+                /// Merges that match this Regex will be ignored.
+                optional --ignore ignore: String
             }
 
             /// Evaluate the tokenizer on a test set.
@@ -602,6 +604,7 @@ fn bpe(
     step: usize,
     score_scale_factor: f64,
     max_merge_length: usize,
+    ignore: &str,
 ) {
     log::info!(
         "BPE | merges={} step={} score_scale_factor={} max_merge_length={}",
@@ -776,6 +779,7 @@ fn main() {
                 flags.step.unwrap_or(10),
                 flags.score_scale_factor.unwrap_or(0.75),
                 flags.max_merge_length.unwrap_or(16),
+                &flags.ignore.unwrap_or("^$".into()),
             );
         }
     }

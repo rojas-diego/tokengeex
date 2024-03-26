@@ -102,25 +102,10 @@ impl UnigramTrainer {
     /// segmentations of each sample into tokens, weighted by the probability
     /// of each segmentation.
     fn run_e_step(&self, model: &Unigram, samples: &[&str]) -> Vec<f64> {
-        // We chunk up samples into chunks that are at most 1/10th of the
-        // per-thread workload because too large chunks can cause some threads
-        // to be idle while others are still working. We also prevent
-        // chunks from being too small to avoid too much overhead.
-        let min_chunk_size = 1024;
-        let max_chunk_size = samples.len() / current_num_threads() / 10;
-        let chunk_size = std::cmp::max(
-            1,
-            if max_chunk_size < min_chunk_size {
-                // If we have a small amount of samples, it's better to have
-                // exactly num_threads chunks.
-                ((samples.len() as f64) / (current_num_threads() as f64)).ceil() as usize
-            } else {
-                max_chunk_size
-            },
-        );
         // At the end of each chunk, each thread merges its expected
         // frequencies to the global expected frequencies through a mutex.
         let acc_expected_frequencies = RwLock::new(vec![0.0; model.vocab.len()]);
+        let chunk_size = par_chunk_size(samples.len(), 1024);
 
         log::info!(
             "E-step | {} samples | {} threads | {} chunks | {} chunk size",
@@ -159,10 +144,6 @@ impl UnigramTrainer {
             let mut expected_frequencies = vec![0.0; model.vocab.len()];
             let mut lattice = Lattice::default();
             let mut pool = VecPool::with_capacity(MAX_SAMPLE_LENGTH, 16);
-
-            fn mb_per_sec(n: usize, since: std::time::Instant) -> f64 {
-                (n as f64 / 1024.0 / 1024.0) / since.elapsed().as_secs_f64()
-            }
 
             for sample in chunk {
                 for snippet in sample.as_bytes().chunks(MAX_SAMPLE_LENGTH) {
@@ -347,16 +328,30 @@ impl UnigramTrainer {
             }
         }
 
-        log::info!("Computing frequencies");
+        // At the end of each chunk, each thread merges its expected
+        // frequencies to the global expected frequencies through a mutex.
+        let acc_frequencies = RwLock::new(vec![0usize; model.vocab.len()]);
+        let chunk_size = par_chunk_size(samples.len(), 1024);
+        let compute_frequencies_start = std::time::Instant::now();
+        let num_samples = samples.len();
+        let num_samples_processed = std::sync::atomic::AtomicUsize::new(0);
+        let num_bytes_processed = std::sync::atomic::AtomicUsize::new(0);
 
-        // For a token ID i, inverted[i] stores the list of sentence IDs that
-        // contain the token i.
-        // This step computes the global frequency of each token and the list of
-        // samples that contain each token.
-        let chunk_size = std::cmp::max(samples.len() / current_num_threads() / 10, 1);
-        let token_frequencies: Vec<usize> = samples
+        log::info!(
+            "Computing frequencies | {} samples | {} threads | {} chunks | {} chunk size",
+            samples.len(),
+            current_num_threads(),
+            (samples.len() + chunk_size) / chunk_size,
+            chunk_size
+        );
+
+        samples
             .maybe_par_chunks(chunk_size)
-            .map(|chunk| {
+            .map(|chunk| -> Result<()> {
+                let tid =
+                    unsafe { std::mem::transmute::<ThreadId, u64>(std::thread::current().id()) };
+                let start = std::time::Instant::now();
+                let mut tl_num_bytes_processed = 0;
                 let mut frequencies: Vec<usize> = vec![0; vocab.len()];
                 let mut sample_frequencies: Vec<usize> = vec![0; vocab.len()];
 
@@ -380,19 +375,43 @@ impl UnigramTrainer {
 
                         *freq = 0;
                     }
+
+                    tl_num_bytes_processed += sentence.len();
                 }
 
-                Ok(frequencies)
-            })
-            .reduce(
-                || Ok(vec![0; vocab.len()]),
-                |l: Result<Vec<usize>>, r: Result<Vec<usize>>| {
-                    let l = l?;
-                    let r = r?;
-                    Ok(l.iter().zip(r).map(|(a, b)| a + b).collect())
-                },
-            )?;
+                // Merge the frequencies to the global frequencies through a mutex.
+                {
+                    let mut acc_frequencies = acc_frequencies.write().unwrap();
+                    for (acc, freq) in acc_frequencies.iter_mut().zip(frequencies) {
+                        *acc += freq;
+                    }
+                }
 
+                let total_bytes_processed = num_bytes_processed
+                    .fetch_add(tl_num_bytes_processed, Relaxed)
+                    + tl_num_bytes_processed;
+                let total_samples_processed =
+                    num_samples_processed.fetch_add(chunk.len(), Relaxed) + chunk.len();
+
+                let percent_done = (total_samples_processed as f64 / num_samples as f64) * 100.0;
+
+                let eta = (compute_frequencies_start.elapsed().as_secs_f64() / percent_done)
+                    * (100.0 - percent_done);
+
+                log::debug!(
+                    "Worker {:>3} | ETA {:>5}s | {:>6.2}% | Task {:>4.2}MB/s | Thread {:>4.2}MB/s",
+                    tid,
+                    eta.round(),
+                    percent_done,
+                    mb_per_sec(total_bytes_processed, compute_frequencies_start),
+                    mb_per_sec(tl_num_bytes_processed, start),
+                );
+
+                Ok(())
+            })
+            .collect::<Result<()>>()?;
+
+        let token_frequencies = acc_frequencies.into_inner().unwrap();
         let sum_token_frequencies = token_frequencies.iter().sum::<usize>() as f64;
         let logsum_token_frequencies = (sum_token_frequencies as f64).ln();
 
@@ -500,6 +519,28 @@ fn digamma(mut x: f64) -> f64 {
     result += x.ln() + (1.0 / 24.0) * xx2 - 7.0 / 960.0 * xx4 + (31.0 / 8064.0) * xx4 * xx2
         - (127.0 / 30720.0) * xx4 * xx4;
     result
+}
+
+// We chunk up samples into chunks that are at most 1/10th of the
+// per-thread workload because too large chunks can cause some threads
+// to be idle while others are still working. We also prevent
+// chunks from being too small to avoid too much overhead.
+fn par_chunk_size(num_samples: usize, min_chunk_size: usize) -> usize {
+    let max_chunk_size = num_samples / current_num_threads() / 10;
+    std::cmp::max(
+        1,
+        if max_chunk_size < min_chunk_size {
+            // If we have a small amount of samples, it's better to have
+            // exactly num_threads chunks.
+            ((num_samples as f64) / (current_num_threads() as f64)).ceil() as usize
+        } else {
+            max_chunk_size
+        },
+    )
+}
+
+fn mb_per_sec(n: usize, since: std::time::Instant) -> f64 {
+    (n as f64 / 1024.0 / 1024.0) / since.elapsed().as_secs_f64()
 }
 
 fn regularize_sample_log(freq: usize) -> usize {

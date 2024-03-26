@@ -2,6 +2,8 @@ use pyo3::create_exception;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3::types::*;
+use tokengeex::ScoredToken;
+use tokengeex::{Token, TokenID};
 
 create_exception!(tokengeex, TokenGeeXError, pyo3::exceptions::PyException);
 
@@ -35,31 +37,41 @@ impl From<PyTokenGeeXError> for PyErr {
 
 #[pymethods]
 impl PyTokenizer {
-    fn encode(&self, text: &str) -> Result<Vec<u32>, PyTokenGeeXError> {
+    fn encode(&self, text: &str) -> Result<Vec<TokenID>, PyTokenGeeXError> {
         self.tokenizer.encode(text).map_err(|e| e.into())
     }
 
-    fn encode_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<u32>>, PyTokenGeeXError> {
+    fn encode_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
         self.tokenizer
             .encode_batch(texts.iter())
             .map_err(|e| e.into())
     }
 
-    fn decode(&self, ids: Vec<u32>) -> Result<String, PyTokenGeeXError> {
-        self.tokenizer.decode(&ids).map_err(|e| e.into())
-    }
-
-    fn decode_batch(&self, ids: Vec<Vec<u32>>) -> Result<Vec<String>, PyTokenGeeXError> {
+    fn decode(
+        &self,
+        ids: Vec<TokenID>,
+        include_special_tokens: bool,
+    ) -> Result<String, PyTokenGeeXError> {
         self.tokenizer
-            .decode_batch(ids.iter())
+            .decode(&ids, include_special_tokens)
             .map_err(|e| e.into())
     }
 
-    fn token_to_id(&self, token: &str) -> Option<u32> {
+    fn decode_batch(
+        &self,
+        ids: Vec<Vec<TokenID>>,
+        include_special_tokens: bool,
+    ) -> Result<Vec<String>, PyTokenGeeXError> {
+        self.tokenizer
+            .decode_batch(ids.iter(), include_special_tokens)
+            .map_err(|e| e.into())
+    }
+
+    fn token_to_id(&self, token: Token) -> Option<TokenID> {
         self.tokenizer.token_to_id(token)
     }
 
-    fn id_to_token(&self, id: u32) -> Option<String> {
+    fn id_to_token(&self, id: TokenID) -> Option<ScoredToken> {
         self.tokenizer.id_to_token(id)
     }
 

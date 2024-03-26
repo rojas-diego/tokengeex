@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 class TokenGeeXError(Exception):
     """
@@ -38,7 +38,7 @@ class Tokenizer:
         """
         pass
 
-    def decode(self, ids: List[int]) -> str:
+    def decode(self, ids: List[int], include_special_tokens: bool) -> str:
         """
         Decodes a list of ids into a string.
 
@@ -53,7 +53,9 @@ class Tokenizer:
         """
         pass
 
-    def decode_batch(self, idss: List[List[int]]) -> List[str]:
+    def decode_batch(
+        self, ids: List[List[int]], include_special_tokens: bool
+    ) -> List[str]:
         """
         Decodes a list of lists of ids into a list of strings.
 
@@ -68,7 +70,7 @@ class Tokenizer:
         """
         pass
 
-    def token_to_id(self, token: str) -> Optional[int]:
+    def token_to_id(self, token: bytes) -> Optional[int]:
         """
         Converts a token to its ID.
 
@@ -77,7 +79,16 @@ class Tokenizer:
         """
         pass
 
-    def id_to_token(self, id: int) -> Optional[str]:
+    def special_token_to_id(self, token: str) -> Optional[int]:
+        """
+        Converts a special token to its ID.
+
+        Returns:
+            The token ID or None if the token is not a special token.
+        """
+        pass
+
+    def id_to_token(self, id: int) -> Optional[Tuple[bytes, float]]:
         """
         Converts an ID to its token.
 
@@ -86,12 +97,12 @@ class Tokenizer:
         """
         pass
 
-    def is_special(self, id: int) -> bool:
+    def id_to_special_token(self, id: int) -> Optional[str]:
         """
-        Checks if an ID is a special token.
+        Converts an ID to its special token.
 
         Returns:
-            True if the ID is a special token, False otherwise.
+            The special token or None if the ID is not a special token.
         """
         pass
 
@@ -115,13 +126,6 @@ class Tokenizer:
         """
         Returns:
             The size of the vocabulary including special tokens.
-        """
-        pass
-
-    def to_string(self) -> str:
-        """
-        Returns:
-            A string representation of the tokenizer.
         """
         pass
 

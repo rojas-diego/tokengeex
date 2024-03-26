@@ -1,3 +1,4 @@
+use fnv::FnvHashMap;
 use memmap2::Mmap;
 use serde::Serialize;
 use std::{
@@ -7,8 +8,10 @@ use std::{
     sync::RwLock,
 };
 use tokengeex::{
-    parallelism::MaybeParallelRefIterator, unigram, CapcodeProcessor, CrlfProcessor, Model,
-    Processor, ProcessorWrapper, Tokenizer, UnicodeProcessor, VocabularyGenerator,
+    parallelism::{MaybeParallelRefIterator, MaybeParallelSlice},
+    task::{par_chunk_size, Task},
+    unigram, CapcodeProcessor, CrlfProcessor, Model, Processor, ProcessorWrapper, TokenID,
+    Tokenizer, UnicodeProcessor, VocabularyGenerator,
 };
 
 mod flags {
@@ -67,6 +70,26 @@ mod flags {
                 optional --unigram-sample-regularization unigram_sample_regularization: String
             }
 
+            /// Improve a tokeniser using BPE.
+            cmd bpe {
+                /// Tokeniser vocabulary filepath.
+                required -v, --vocab vocab: String
+                /// The number of merge operations to perform.
+                required --num-merges num_merges: usize
+                /// List of source files to train the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
+                repeated --train train: String
+                /// List of source files to test the tokenizer on. Must be
+                /// formatted according to {name}:{path}.
+                repeated --test test: String
+                /// Step size for the BPE merge operations.
+                optional --step step: usize
+                /// Score scale factor.
+                optional --score-scale-factor score_scale_factor: f64
+                /// Max merge length
+                optional --max-merge-length max_merge_length: usize
+            }
+
             /// Evaluate the tokenizer on a test set.
             cmd evaluate {
                 /// Tokeniser vocabulary filepath.
@@ -116,7 +139,12 @@ fn encode(input: Option<&str>, vocab: &str) {
 
     let encoded = encoded
         .iter()
-        .map(|id| tokenizer.id_to_token(*id).unwrap().to_string())
+        .map(|id| {
+            tokenizer
+                .id_to_token(*id)
+                .map(|(s, _)| String::from_utf8_lossy(&s).into())
+                .unwrap()
+        })
         .collect::<Vec<String>>();
 
     for (i, token) in encoded.iter().enumerate() {
@@ -141,6 +169,7 @@ fn decode(input: Option<&str>, vocab: &str) {
                 .split(',')
                 .map(|s| s.parse().unwrap())
                 .collect::<Vec<_>>(),
+            true,
         )
         .unwrap();
 
@@ -456,20 +485,29 @@ fn train(
     }
 }
 
+#[derive(Serialize, Clone)]
+struct Compression {
+    pub num_tokens: usize,
+    pub num_chars: usize,
+    pub chars_per_token: f64,
+}
+
+#[derive(Serialize)]
+struct Evaluation {
+    pub epoch: usize,
+    pub split: String,
+    pub vocab_size: usize,
+    pub compression: HashMap<String, Compression>,
+    pub frequency_buckets: Vec<usize>,
+}
+
 fn evaluate_impl(
     logfile: &mut FileLogger,
     split: &str,
     epoch: usize,
     sources: &Vec<Source>,
     model: &unigram::Unigram,
-) {
-    #[derive(Serialize, Clone)]
-    struct Compression {
-        num_tokens: usize,
-        num_chars: usize,
-        chars_per_token: f64,
-    }
-
+) -> Evaluation {
     let token_frequencies = RwLock::new(vec![0; model.vocab_size()]);
     let mut compression = HashMap::new();
 
@@ -530,15 +568,6 @@ fn evaluate_impl(
         frequency_buckets[current_bucket] += frequency;
     }
 
-    #[derive(Serialize)]
-    struct Evaluation {
-        epoch: usize,
-        split: String,
-        vocab_size: usize,
-        compression: HashMap<String, Compression>,
-        frequency_buckets: Vec<usize>,
-    }
-
     let evaluation = Evaluation {
         epoch,
         split: split.into(),
@@ -548,6 +577,8 @@ fn evaluate_impl(
     };
 
     logfile.write(&evaluation);
+
+    evaluation
 }
 
 fn evaluate(vocab: &str, logfile: &str, test: &Vec<String>) {
@@ -564,8 +595,141 @@ fn evaluate(vocab: &str, logfile: &str, test: &Vec<String>) {
     evaluate_impl(&mut logfile, "test", 0, &test, &model);
 }
 
+fn bpe(
+    vocab: &str,
+    num_merges: usize,
+    train: &Vec<String>,
+    step: usize,
+    score_scale_factor: f64,
+    max_merge_length: usize,
+) {
+    log::info!(
+        "BPE | merges={} step={} score_scale_factor={} max_merge_length={}",
+        num_merges,
+        step,
+        score_scale_factor,
+        max_merge_length
+    );
+
+    let mut tokenizer = tokengeex::load(vocab).unwrap();
+    let mut logfile = FileLogger::new("/dev/null");
+
+    let test = load_sources(&train, &tokenizer.processors());
+    let train = load_sources(&train, &tokenizer.processors());
+
+    let samples = train
+        .iter()
+        .flat_map(|source| source.processed_samples.iter())
+        .map(|s| s.as_str())
+        .collect::<Vec<&str>>();
+
+    let mut eval = {
+        let model = match tokenizer.model() {
+            tokengeex::ModelWrapper::Unigram(unigram) => unigram,
+        };
+        evaluate_impl(&mut logfile, "test", 0, &test, &model)
+    };
+
+    for merges_completed in (0..num_merges).step_by(step) {
+        let mut merges = std::cmp::min(step, num_merges - merges_completed);
+
+        let chunk_size = par_chunk_size(samples.len(), 4096, 10);
+        let task = Task::new("BPE Merge", samples.len(), chunk_size);
+        let pair_frequencies = RwLock::new(FnvHashMap::<(TokenID, TokenID), usize>::default());
+
+        samples.maybe_par_chunks(chunk_size).for_each(|chunk| {
+            let mut ltask = task.local(chunk.len());
+            let mut local_pair_frequencies = FnvHashMap::<(TokenID, TokenID), usize>::default();
+
+            for sample in chunk {
+                let ids = tokenizer.encode(sample).unwrap();
+
+                for i in 1..ids.len() {
+                    let pair = (ids[i - 1], ids[i]);
+                    *local_pair_frequencies.entry(pair).or_insert(0) += 1;
+                }
+
+                ltask.record(sample.len());
+            }
+
+            {
+                let mut pair_frequencies = pair_frequencies.write().unwrap();
+                for (pair, freq) in local_pair_frequencies {
+                    *pair_frequencies.entry(pair).or_insert(0) += freq;
+                }
+            }
+
+            ltask.finish();
+        });
+
+        let mut pairs = pair_frequencies
+            .into_inner()
+            .unwrap()
+            .into_iter()
+            .collect::<Vec<((TokenID, TokenID), usize)>>();
+
+        pairs.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+        for ((a, b), freq) in pairs.iter().copied() {
+            if merges == 0 {
+                break;
+            }
+
+            let a = tokenizer.model_mut().vocab()[a as usize].clone();
+            let b = tokenizer.model_mut().vocab()[b as usize].clone();
+
+            let mut token = a.0.clone();
+            token.extend_from_slice(&b.0);
+            let score = (a.1 + b.1) * score_scale_factor;
+
+            if token.len() > max_merge_length {
+                continue;
+            }
+
+            tokenizer.add_tokens([(token.clone(), score)]);
+
+            merges -= 1;
+
+            log::info!(
+                "Merged {:?} + {:?} ({}) -> {:?} (score: {:.2})",
+                String::from_utf8_lossy(&a.0),
+                String::from_utf8_lossy(&b.0),
+                freq,
+                String::from_utf8_lossy(&token),
+                score
+            );
+        }
+
+        let new_eval = {
+            let model = match tokenizer.model() {
+                tokengeex::ModelWrapper::Unigram(unigram) => unigram,
+            };
+            evaluate_impl(&mut logfile, "test", merges_completed, &test, &model)
+        };
+
+        // Compare the new evaluation with the previous one.
+        for source in new_eval.compression.keys() {
+            let old_compression = eval.compression.get(source).unwrap();
+            let new_compression = new_eval.compression.get(source).unwrap();
+
+            let old_chars_per_token = old_compression.chars_per_token;
+            let new_chars_per_token = new_compression.chars_per_token;
+
+            let delta = new_chars_per_token - old_chars_per_token;
+
+            log::info!(
+                "Compression for {:?} improved by {:.2} chars per token.",
+                source,
+                delta
+            );
+        }
+
+        eval = new_eval;
+    }
+}
+
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_default_env().init();
 
     match flags::Tokengeex::from_env_or_exit().subcommand {
         flags::TokengeexCmd::Train(flags) => {
@@ -603,6 +767,16 @@ fn main() {
         }
         flags::TokengeexCmd::Decode(flags) => {
             decode(flags.input.as_deref(), &flags.vocab);
+        }
+        flags::TokengeexCmd::Bpe(flags) => {
+            bpe(
+                &flags.vocab,
+                flags.num_merges,
+                &flags.train,
+                flags.step.unwrap_or(10),
+                flags.score_scale_factor.unwrap_or(0.75),
+                flags.max_merge_length.unwrap_or(16),
+            );
         }
     }
 }

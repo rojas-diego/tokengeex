@@ -2,19 +2,22 @@ use std::collections::HashMap;
 
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
 
-use crate::{utils::parallelism::*, Model, ModelWrapper, Processor, ProcessorWrapper, Result};
+use crate::{
+    utils::parallelism::*, Model, ModelWrapper, Processor, ProcessorWrapper, Result, ScoredToken,
+    Token, TokenID,
+};
 
 #[derive(Clone)]
 pub struct Tokenizer {
     model: ModelWrapper,
     processors: Vec<ProcessorWrapper>,
     special_tokens: Vec<String>,
-    special_tokens_map: HashMap<String, u32>,
+    special_tokens_map: HashMap<String, TokenID>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum TokenizerError {
-    TokenIdOutOfBounds(u32),
+    TokenIdOutOfBounds(TokenID),
 }
 
 impl std::fmt::Display for TokenizerError {
@@ -53,7 +56,8 @@ impl Tokenizer {
 
     /// Add special tokens to this tokenizer. Special tokens are encoded before
     /// the rest of the tokenization pipeline. They are assigned IDs starting
-    /// from the end of the vocabulary.
+    /// from the end of the vocabulary. If the special token is already present,
+    /// it is ignored.
     pub fn add_special_tokens<I>(&mut self, tokens: I)
     where
         I: IntoIterator,
@@ -65,9 +69,17 @@ impl Tokenizer {
             }
 
             self.special_tokens_map
-                .insert(token.to_string(), self.special_tokens.len() as u32);
+                .insert(token.to_string(), self.special_tokens.len() as TokenID);
             self.special_tokens.push(token.to_string());
         }
+    }
+
+    /// Add tokens to the underlying model.
+    pub fn add_tokens<I>(&mut self, tokens: I)
+    where
+        I: IntoIterator<Item = ScoredToken>,
+    {
+        self.model.add_tokens(tokens);
     }
 
     /// Encode the input sequence into an array of token IDs. Special tokens
@@ -79,7 +91,7 @@ impl Tokenizer {
         {
             if is_special {
                 ids.push(
-                    self.model.vocab_size() as u32
+                    self.model.vocab_size() as TokenID
                         + self
                             .special_tokens_map
                             .get(substr)
@@ -112,7 +124,7 @@ impl Tokenizer {
     }
 
     /// Decode the input sequence from an array of token IDs.
-    pub fn decode(&self, input: &[u32]) -> Result<String> {
+    pub fn decode(&self, input: &[TokenID], include_special_tokens: bool) -> Result<String> {
         let mut input = input;
         let mut output = String::new();
 
@@ -120,16 +132,20 @@ impl Tokenizer {
         loop {
             let next_special_token_idx = input
                 .iter()
-                .position(|&id| id >= self.model.vocab_size() as u32);
+                .position(|&id| id >= self.model.vocab_size() as TokenID);
 
             match next_special_token_idx {
                 Some(idx) => {
                     output.push_str(&self.model.decode(&input[..idx])?);
-                    output.push_str(
-                        self.special_tokens
-                            .get((input[idx] - self.model.vocab_size() as u32) as usize)
-                            .ok_or(TokenizerError::TokenIdOutOfBounds(input[idx]))?,
-                    );
+
+                    let special = self
+                        .special_tokens
+                        .get((input[idx] - self.model.vocab_size() as TokenID) as usize)
+                        .ok_or(TokenizerError::TokenIdOutOfBounds(input[idx]))?;
+
+                    if include_special_tokens {
+                        output.push_str(special);
+                    }
 
                     input = &input[idx + 1..];
                 }
@@ -152,40 +168,48 @@ impl Tokenizer {
         Ok(output)
     }
 
-    pub fn decode_batch<I>(&self, inputs: I) -> Result<Vec<String>>
+    pub fn decode_batch<I>(&self, inputs: I, include_special_tokens: bool) -> Result<Vec<String>>
     where
         I: Iterator + Send,
-        I::Item: AsRef<[u32]> + Send,
+        I::Item: AsRef<[TokenID]> + Send,
     {
         inputs
             .into_iter()
             .maybe_par_bridge()
-            .map(|s| self.decode(s.as_ref()))
+            .map(|s| self.decode(s.as_ref(), include_special_tokens))
             .collect()
     }
 
-    pub fn token_to_id(&self, token: &str) -> Option<u32> {
-        if let Some(id) = self.special_tokens_map.get(token) {
-            return Some(self.model.vocab_size() as u32 + id);
-        }
+    pub fn special_token_to_id(&self, token: &str) -> Option<TokenID> {
+        self.special_tokens_map
+            .get(token)
+            .map(|id| *id + self.model.vocab_size() as TokenID)
+    }
+
+    pub fn token_to_id(&self, token: Token) -> Option<TokenID> {
         self.model.token_to_id(token)
     }
 
-    pub fn id_to_token(&self, id: u32) -> Option<String> {
-        if id < self.model.vocab_size() as u32 {
-            self.model.id_to_token(id)
-        } else if (id - self.model.vocab_size() as u32) < self.special_tokens.len() as u32 {
-            Some(self.special_tokens[(id - self.model.vocab_size() as u32) as usize].clone())
-        } else {
-            None
+    pub fn id_to_special_token(&self, id: TokenID) -> Option<String> {
+        if id < self.model.vocab_size() as TokenID {
+            return None;
         }
+
+        let id = id - self.model.vocab_size() as TokenID;
+        self.special_tokens.get(id as usize).cloned()
     }
 
-    pub fn is_special(&self, id: u32) -> Option<bool> {
-        if id < self.model.vocab_size() as u32 {
+    pub fn id_to_token(&self, id: TokenID) -> Option<ScoredToken> {
+        self.model.id_to_token(id)
+    }
+
+    pub fn is_special(&self, id: TokenID) -> Option<bool> {
+        if id < self.model.vocab_size() as TokenID {
             return Some(false);
         }
-        Some((id - self.model.vocab_size() as u32) < self.special_tokens.len() as u32)
+
+        let id = id - self.model.vocab_size() as TokenID;
+        Some(self.special_tokens.get(id as usize).is_some())
     }
 
     pub fn special_tokens(&self) -> Vec<String> {
@@ -202,18 +226,26 @@ impl Tokenizer {
         Ok(())
     }
 
-    pub fn model(&self) -> ModelWrapper {
-        self.model.clone()
+    pub fn model(&self) -> &ModelWrapper {
+        &self.model
     }
 
-    pub fn processors(&self) -> Vec<ProcessorWrapper> {
-        self.processors.clone()
+    pub fn model_mut(&mut self) -> &mut ModelWrapper {
+        &mut self.model
+    }
+
+    pub fn processors(&self) -> &Vec<ProcessorWrapper> {
+        &self.processors
+    }
+
+    pub fn processors_mut(&mut self) -> &mut Vec<ProcessorWrapper> {
+        &mut self.processors
     }
 }
 
-impl std::fmt::Display for Tokenizer {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", serde_json::to_string(self).unwrap())
+impl ToString for Tokenizer {
+    fn to_string(&self) -> String {
+        serde_json::to_string(self).expect("failed to serialize Tokenizer")
     }
 }
 
@@ -360,7 +392,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_deserialize() {
+    fn test_deserialize_deserialize() {
         let tokenizer_json = r#"{"version":"1.0","model":{"type":"unigram","vocab":[]}}"#;
         let tokenizer: StdResult<Tokenizer, _> = serde_json::from_str(tokenizer_json);
         assert!(tokenizer.is_ok());

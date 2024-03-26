@@ -85,7 +85,7 @@ fn lattice(c: &mut Criterion) {
         b.iter(|| {
             let chunk_size = std::cmp::max(1, samples.len() / rayon::current_num_threads());
             let delete_token_id = model
-                .token_to_id("D")
+                .token_to_id("D".into())
                 .unwrap_or(model.vocab_size() as TokenID);
             let delete_token_score = model
                 .vocab()
@@ -125,7 +125,7 @@ fn lattice(c: &mut Criterion) {
                 let mut pool = VecPool::with_capacity(1024 * 128, 16);
                 let mut frequencies = vec![0.0; model.vocab_size()];
                 let delete_token_id = model
-                    .token_to_id("D")
+                    .token_to_id("D".into())
                     .unwrap_or(model.vocab_size() as TokenID);
                 let delete_token_score = model
                     .vocab()

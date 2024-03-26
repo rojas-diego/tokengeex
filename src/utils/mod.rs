@@ -3,6 +3,7 @@ use crate::ScoredToken;
 pub mod capcode;
 pub mod lattice;
 pub mod parallelism;
+pub mod task;
 pub mod trie;
 
 pub fn logprobs(pieces: &mut [ScoredToken]) {

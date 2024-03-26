@@ -87,18 +87,13 @@ impl Unigram {
         }
     }
 
-    /// Access the vocabulary of the model.
-    pub fn vocab(&self) -> &Vec<ScoredToken> {
-        &self.vocab
-    }
-
     /// Populates a lattice with all the possible tokenizations of the input
     /// sentence.
     pub fn populate_nodes(&self, lattice: &mut Lattice) {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = lattice.sentence;
 
-        let delete_marker_id = self.token_to_id("D");
+        let delete_marker_id = self.token_to_id("D".into());
         let delete_marker_score = if let Some(delete_marker_token_id) = delete_marker_id {
             self.vocab[delete_marker_token_id as usize].1
         } else {
@@ -163,7 +158,7 @@ impl Model for Unigram {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = input.as_bytes();
 
-        let delete_marker_id = self.token_to_id("D");
+        let delete_marker_id = self.token_to_id("D".into());
         let delete_marker_score = if let Some(delete_marker_token_id) = delete_marker_id {
             self.vocab[delete_marker_token_id as usize].1
         } else {
@@ -304,23 +299,42 @@ impl Model for Unigram {
 
     /// Convert a token to a token ID. Currently it is not possible to access
     /// tokens that are invalid UTF-8 through this method.
-    fn token_to_id(&self, token: &str) -> Option<u32> {
-        self.token_to_ids.get(token.as_bytes()).copied()
+    fn token_to_id(&self, token: Token) -> Option<u32> {
+        self.token_to_ids.get(&token).copied()
     }
 
     /// Convert a token ID to a token. If the byte sequence is not valid UTF-8
     /// it will be returned as a lossy string.
-    fn id_to_token(&self, id: u32) -> Option<String> {
+    fn id_to_token(&self, id: u32) -> Option<ScoredToken> {
         if id > self.vocab.len() as u32 {
             return None;
         }
 
-        Some(String::from_utf8_lossy(&self.vocab[id as usize].0).into_owned())
+        Some(self.vocab[id as usize].clone())
     }
 
     /// Number of entries in the vocabulary.
     fn vocab_size(&self) -> usize {
         self.vocab.len()
+    }
+
+    /// Add a token to the vocabulary.
+    fn add_tokens<I>(&mut self, tokens: I)
+    where
+        I: IntoIterator<Item = ScoredToken>,
+    {
+        for token in tokens {
+            let (token, score) = token.into();
+            let id = self.vocab.len() as u32;
+            self.trie.push(&token, (id, token.len() as u32));
+            self.token_to_ids.insert(token.clone(), id);
+            self.vocab.push((token, score));
+        }
+    }
+
+    /// Access the vocabulary of the model.
+    fn vocab(&self) -> &[ScoredToken] {
+        &self.vocab
     }
 }
 

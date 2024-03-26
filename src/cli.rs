@@ -1,5 +1,6 @@
 use fnv::FnvHashMap;
 use memmap2::Mmap;
+use rayon::current_num_threads;
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -72,10 +73,13 @@ mod flags {
 
             /// Improve a tokeniser using BPE.
             cmd bpe {
+                /// Output tokeniser filepath.
+                required -o, --output output: String
                 /// Tokeniser vocabulary filepath.
                 required -v, --vocab vocab: String
                 /// The number of merge operations to perform.
-                required --num-merges num_merges: usize
+                required -n, --num-merges num_merges: usize
+
                 /// List of source files to train the tokenizer on. Must be
                 /// formatted according to {name}:{path}.
                 repeated --train train: String
@@ -543,7 +547,7 @@ fn evaluate_impl(
         compression.insert(source.name.clone(), compression_for_source.clone());
 
         log::info!(
-            "{:>5} | {:>18} | {:>9} chars | {:>9} tokens | {:<4} chars per token",
+            "{:>5} | {:>18} | {:>10} chars | {:>10} tokens | {:<4} chars per token",
             split.to_uppercase(),
             format!("{:?}", source.name),
             compression_for_source.num_chars,
@@ -598,6 +602,7 @@ fn evaluate(vocab: &str, logfile: &str, test: &Vec<String>) {
 }
 
 fn bpe(
+    output: &str,
     vocab: &str,
     num_merges: usize,
     train: &Vec<String>,
@@ -620,7 +625,7 @@ fn bpe(
     let mut logfile = FileLogger::new("/dev/null");
 
     let test = load_sources(&train, &tokenizer.processors());
-    let train = load_sources(&train, &tokenizer.processors());
+    let train = load_sources(&train, &[]);
 
     let samples = train
         .iter()
@@ -628,7 +633,7 @@ fn bpe(
         .map(|s| s.as_str())
         .collect::<Vec<&str>>();
 
-    let mut eval = {
+    let baseline = {
         let model = match tokenizer.model() {
             tokengeex::ModelWrapper::Unigram(unigram) => unigram,
         };
@@ -640,7 +645,7 @@ fn bpe(
     for merges_completed in (0..num_merges).step_by(step) {
         let mut merges = std::cmp::min(step, num_merges - merges_completed);
 
-        let chunk_size = par_chunk_size(samples.len(), 4096, 10);
+        let chunk_size = par_chunk_size(samples.len(), current_num_threads() * 512, 10);
         let task = Task::new("BPE Merge", samples.len(), chunk_size);
         let pair_frequencies = RwLock::new(FnvHashMap::<(TokenID, TokenID), usize>::default());
 
@@ -694,12 +699,23 @@ fn bpe(
             if token.len() > max_merge_length || ignore.is_match(&String::from_utf8_lossy(&token)) {
                 if !ignored_pairs.contains_key(&pair) {
                     log::warn!(
-                        "Ignoring merge {:?} + {:?} ({}) -> {:?} (score: {:.2})",
-                        String::from_utf8_lossy(&a.0),
-                        String::from_utf8_lossy(&a.0),
+                        "Skipped | {:<10} | {:<10} | {:<32} | Freq {:>8} | Score {:.2} | {}",
+                        format!(
+                            "{:?}",
+                            String::from_utf8_lossy(&a.0[..std::cmp::min(8, a.0.len())])
+                        ),
+                        format!(
+                            "{:?}",
+                            String::from_utf8_lossy(&b.0[..std::cmp::min(8, b.0.len())])
+                        ),
+                        format!("{:?}", String::from_utf8_lossy(&token)),
                         freq,
-                        String::from_utf8_lossy(&token),
-                        score
+                        score,
+                        if token.len() > max_merge_length {
+                            "TOO LONG"
+                        } else {
+                            "IGNORED"
+                        }
                     );
                     ignored_pairs.insert(pair, freq);
                 }
@@ -711,16 +727,22 @@ fn bpe(
             merges -= 1;
 
             log::info!(
-                "Merged {:?} + {:?} ({}) -> {:?} (score: {:.2})",
-                String::from_utf8_lossy(&a.0),
-                String::from_utf8_lossy(&b.0),
+                "Merged  | {:<10} | {:<10} | {:<32} | Freq {:>8} | Score {:.2}",
+                format!(
+                    "{:?}",
+                    String::from_utf8_lossy(&a.0[..std::cmp::min(8, a.0.len())])
+                ),
+                format!(
+                    "{:?}",
+                    String::from_utf8_lossy(&b.0[..std::cmp::min(8, b.0.len())])
+                ),
+                format!("{:?}", String::from_utf8_lossy(&token)),
                 freq,
-                String::from_utf8_lossy(&token),
                 score
             );
         }
 
-        let new_eval = {
+        let eval = {
             let model = match tokenizer.model() {
                 tokengeex::ModelWrapper::Unigram(unigram) => unigram,
             };
@@ -728,24 +750,26 @@ fn bpe(
         };
 
         // Compare the new evaluation with the previous one.
-        for source in new_eval.compression.keys() {
-            let old_compression = eval.compression.get(source).unwrap();
-            let new_compression = new_eval.compression.get(source).unwrap();
-
-            let old_chars_per_token = old_compression.chars_per_token;
-            let new_chars_per_token = new_compression.chars_per_token;
-
-            let delta = new_chars_per_token - old_chars_per_token;
+        for source in eval.compression.keys() {
+            let baseline_compression = baseline.compression.get(source).unwrap();
+            let new_compression = eval.compression.get(source).unwrap();
 
             log::info!(
-                "Compression for {:?} improved by {:.2} chars per token.",
-                source,
-                delta
+                "DELTA | {:>18} | {:<4} -> {:<4} | +{:04.2} | +{:05.2}%",
+                format!("{:?}", source),
+                baseline_compression.chars_per_token,
+                new_compression.chars_per_token,
+                new_compression.chars_per_token - baseline_compression.chars_per_token,
+                ((new_compression.chars_per_token - baseline_compression.chars_per_token)
+                    / baseline_compression.chars_per_token
+                    * 100.0)
             );
         }
-
-        eval = new_eval;
     }
+
+    log::info!("Writing to {:?}.", output);
+
+    tokenizer.save(output).unwrap();
 }
 
 fn main() {
@@ -790,6 +814,7 @@ fn main() {
         }
         flags::TokengeexCmd::Bpe(flags) => {
             bpe(
+                &flags.output,
                 &flags.vocab,
                 flags.num_merges,
                 &flags.train,

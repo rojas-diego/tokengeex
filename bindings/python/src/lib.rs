@@ -41,9 +41,22 @@ impl PyTokenizer {
         self.tokenizer.encode(text).map_err(|e| e.into())
     }
 
-    fn encode_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
+    fn encode_ordinary(&self, text: &str) -> Result<Vec<TokenID>, PyTokenGeeXError> {
+        self.tokenizer.encode_ordinary(text).map_err(|e| e.into())
+    }
+
+    fn encode_batch(&self, texts: Vec<&str>) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
         self.tokenizer
             .encode_batch(texts.iter())
+            .map_err(|e| e.into())
+    }
+
+    fn encode_ordinary_batch(
+        &self,
+        texts: Vec<&str>,
+    ) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
+        self.tokenizer
+            .encode_ordinary_batch(texts.iter())
             .map_err(|e| e.into())
     }
 
@@ -71,8 +84,16 @@ impl PyTokenizer {
         self.tokenizer.token_to_id(token)
     }
 
+    fn special_token_to_id(&self, token: &str) -> Option<TokenID> {
+        self.tokenizer.special_token_to_id(token)
+    }
+
     fn id_to_token(&self, id: TokenID) -> Option<ScoredToken> {
         self.tokenizer.id_to_token(id)
+    }
+
+    fn id_to_special_token(&self, id: TokenID) -> Option<String> {
+        self.tokenizer.id_to_special_token(id)
     }
 
     fn is_special(&self, id: u32) -> Option<bool> {

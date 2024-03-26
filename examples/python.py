@@ -1,34 +1,56 @@
 import tokengeex
 
-tokenizer = tokengeex.load("./hub/vocab/131k.json")
+tokenizer = tokengeex.load("./hub/vocab/base-131k.json")
 
-s = "Hello, world!"
-ids = tokenizer.encode(s)
+sentence = "Hello, world!"
 
-print(f"encode({s}) ->", ids)
-print(f"decode({ids}) -> ", tokenizer.decode(ids))
+# Encode (without special tokens)
+ids = tokenizer.encode_ordinary(sentence)
+print(ids)
 
-s = "Hello"
-id = tokenizer.token_to_id("Hello")
-print(f"token_to_id({s}):", id)
+# Decode
+decoded = tokenizer.decode(ids, include_special_tokens=False)
+print(decoded)
+
+# Vocabulary
+id = tokenizer.token_to_id(b"Hello")
 assert id is not None
-print(f"id_to_token({id}):", tokenizer.id_to_token(id))
+print(id)
 
-ids = tokenizer.encode_batch(["Hello world", "Goodbye world"])
-print("encode_batch(['Hello world', 'Goodbye world']) ->", ids)
-print(f"decode_batch({ids}) ->", tokenizer.decode_batch(ids))
+token = tokenizer.id_to_token(id)
+print(token)
 
-print("vocab_size() ->", tokenizer.vocab_size())
+vocab_size = tokenizer.vocab_size()
+print(vocab_size)
 
-special = ["<|CODE_MIDDLE|>", "<|CODE_SUFFIX|>", "<|CODE_PREFIX|>"]
-print(f"add_special_tokens({special}) ->", tokenizer.add_special_tokens(special))
-print("special_tokens() ->", tokenizer.special_tokens())
-print("vocab_size() ->", tokenizer.vocab_size())
+# Special tokens
+special_tokens = ["<s>", "</s>", "<pad>", "<unk>"]
+tokenizer.add_special_tokens(special_tokens)
+print(tokenizer.special_tokens())
 
-sid = tokenizer.token_to_id(special[0])
+sid = tokenizer.special_token_to_id("<s>")
 assert sid is not None
-print(f"token_to_id({special[0]}) ->", sid)
-print(f"id_to_token({sid}) ->", tokenizer.id_to_token(sid))
+print(sid)
 
-print("to_string() ->", len(tokenizer.to_string()))
-print("save('/dev/null') ->", tokenizer.save("/dev/null"))
+sentence = "<s>Hello, world!</s>"
+ids = tokenizer.encode(sentence)
+assert ids[0] == sid and ids[-1] == tokenizer.special_token_to_id("</s>")
+print(ids)
+
+new_vocab_size = tokenizer.vocab_size()
+assert vocab_size == new_vocab_size - len(special_tokens)
+print(vocab_size)
+
+stoken = tokenizer.id_to_special_token(sid)
+print(stoken)
+
+# Batch encoding/decoding
+sentences = ["Hello, world!", "Hello, tokengeex!"]
+ids = tokenizer.encode_batch(sentences)
+print(ids)
+
+decoded = tokenizer.decode_batch(ids, include_special_tokens=False)
+print(decoded)
+
+# Save
+tokenizer.save("tokenizer.json")

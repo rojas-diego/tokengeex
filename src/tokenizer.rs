@@ -110,6 +110,16 @@ impl Tokenizer {
         Ok(ids)
     }
 
+    /// Encode the input sequence without special tokens.
+    pub fn encode_ordinary(&self, input: &str) -> Result<Vec<u32>> {
+        let processed = self
+            .processors
+            .iter()
+            .fold(input.to_string(), |s, p| p.preprocess(&s));
+
+        self.model.encode(&processed)
+    }
+
     /// Encode multiple samples at once.
     pub fn encode_batch<I>(&self, inputs: I) -> Result<Vec<Vec<u32>>>
     where
@@ -120,6 +130,19 @@ impl Tokenizer {
             .into_iter()
             .maybe_par_bridge()
             .map(|s| self.encode(s.as_ref()))
+            .collect()
+    }
+
+    /// Encode multiple samples at once without special tokens.
+    pub fn encode_ordinary_batch<I>(&self, inputs: I) -> Result<Vec<Vec<u32>>>
+    where
+        I: Iterator + Send,
+        I::Item: AsRef<str> + Send,
+    {
+        inputs
+            .into_iter()
+            .maybe_par_bridge()
+            .map(|s| self.encode_ordinary(s.as_ref()))
             .collect()
     }
 

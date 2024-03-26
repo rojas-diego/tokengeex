@@ -23,9 +23,39 @@ class Tokenizer:
         """
         pass
 
+    def encode_ordinary(self, text: str) -> List[int]:
+        """
+        Encodes a string into a list of tokens ignoring special tokens.
+
+        Args:
+            text: The input string.
+
+        Returns:
+            A list of token IDs.
+
+        Exceptions:
+            TokenGeeXError: If the input string cannot be tokenized.
+        """
+        pass
+
     def encode_batch(self, texts: List[str]) -> List[List[int]]:
         """
         Encodes a list of strings into a list of lists of tokens.
+
+        Args:
+            texts: A list of input strings.
+
+        Returns:
+            A list of lists of token IDs.
+
+        Exceptions:
+            TokenGeeXError: If the input list of strings contains an untokenizable string.
+        """
+        pass
+
+    def encode_ordinary_batch(self, texts: List[str]) -> List[List[int]]:
+        """
+        Encodes a list of strings into a list of lists of tokens ignoring special tokens.
 
         Args:
             texts: A list of input strings.

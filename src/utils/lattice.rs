@@ -439,3 +439,84 @@ impl VecPool {
         self.pool.push(vec);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::unigram::Unigram;
+
+    use super::*;
+
+    #[test]
+    fn test_lattice() {
+        let mut lattice = Lattice::new();
+        let mut vec_pool = VecPool::with_capacity(16, 4);
+        let sentence = b"<DC value>";
+
+        lattice.from(
+            sentence,
+            TokenID::MAX - 2,
+            TokenID::MAX - 1,
+            TokenID::MAX,
+            0.0,
+            &mut vec_pool,
+        );
+
+        // { "value": "<", "score": -6.478377202549375 },
+        // { "value": " value", "score": -6.818789500340099 },
+        // { "value": ">", "score": -6.261009478629175 },
+        // { "value": "DC value", "score": -7.923162422152268 },
+        // { "value": "<DC", "score": -9.3198963374573 },
+        // { "value": "C value", "score": -9.849505451260585 },
+        // { "value": "value", "score": -10.32022192067916 },
+        // { "value": "<DC value>", "score": -12.72266966561462 },
+        let vocab = [
+            ("<", -3.0),
+            (" value", -6.0),
+            (">", -3.0),
+            ("DC value", -8.0),
+            ("<DC", -4.0),
+            ("<DC value>", -12.0),
+        ];
+
+        let model = Unigram::from(
+            vocab
+                .iter()
+                .map(|(token, score)| (token.as_bytes().to_vec(), *score))
+                .collect(),
+            false,
+        );
+
+        model.populate_nodes(&mut lattice);
+
+        let mut expected_frequencies = vec![0.0; vocab.len()];
+
+        let z = lattice.populate_marginal(&mut expected_frequencies);
+
+        // "<DC value>": 0.665241
+        // ">"         : 0.334759
+        // "<DC"       : 0.244728
+        // " value"    : 0.244728
+        // "<"         : 0.090031
+        // "DC value"  : 0.090031
+        for (exp, token) in expected_frequencies.iter().zip(vocab.iter()) {
+            println!("{:<12}: {:.6}", format!("{:?}", token.0), exp);
+        }
+        println!("z: {}", z);
+
+        let nbests = lattice.nbest(10);
+
+        for (i, nbest) in nbests.iter().enumerate() {
+            print!("nbest[{}]: ▮", i);
+
+            for node in nbest {
+                let token = vocab
+                    .get(node.token_id as usize)
+                    .map(|(token, _)| token.to_string())
+                    .unwrap_or("NONE".to_string());
+                print!("{}▮", token);
+            }
+
+            println!();
+        }
+    }
+}

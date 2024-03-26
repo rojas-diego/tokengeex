@@ -241,7 +241,7 @@ def generate_infilling(args):
     while True:
         content = ""
 
-        for _ in range(32):
+        for _ in range(4):
             sample_idx = random.randrange(len(infilling))
             sample = infilling.pop(sample_idx)
 

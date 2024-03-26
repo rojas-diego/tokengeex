@@ -278,6 +278,9 @@ impl UnigramTrainer {
         samples: &[&str],
         keep: &HashSet<Token>,
     ) -> Result<Vec<ScoredToken>> {
+        let desired_vocab_size: usize = (self.vocab_size * 11) / 10; // * 1.1
+        let pruned_size: usize = ((vocab.len() as f64) * self.shrinking_factor) as usize;
+        let pruned_size = desired_vocab_size.max(pruned_size);
         let bos_id = (vocab.len() + 1) as TokenID;
         let eos_id = (vocab.len() + 2) as TokenID;
         let delete_token_id = model
@@ -416,9 +419,6 @@ impl UnigramTrainer {
         let logsum_token_frequencies = (sum_token_frequencies as f64).ln();
 
         let mut candidates: Vec<(usize, f64)> = vec![];
-        let desired_vocab_size: usize = (self.vocab_size * 11) / 10; // * 1.1
-        let pruned_size: usize = ((vocab.len() as f64) * self.shrinking_factor) as usize;
-        let pruned_size = desired_vocab_size.max(pruned_size);
         let mut pruned_vocab: Vec<ScoredToken> = Vec::with_capacity(pruned_size);
 
         log::info!("Compute model loss based on the frequencies");

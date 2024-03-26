@@ -2,6 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 use tokengeex::{
     lattice::{Lattice, VecPool},
+    parallelism::MaybeParallelRefIterator,
     Model, ModelWrapper, Processor, TokenID, CAPCODE_RE,
 };
 
@@ -287,9 +288,9 @@ fn tokenizer_unigram(c: &mut Criterion) {
 
     group.bench_function("encode", |b| {
         b.iter(|| {
-            for s in &samples {
+            samples.maybe_par_iter().for_each(|s| {
                 tokenizer.encode(s).unwrap();
-            }
+            });
         });
     });
     group.finish();

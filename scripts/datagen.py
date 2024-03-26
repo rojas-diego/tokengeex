@@ -235,35 +235,44 @@ def generate_infilling(args):
         content = f.read()
         content = content.decode("utf-8")
         content = content.split("\0")
-        infilling.extend(content[: len(content) // 10])
+        infilling.extend(content[: len(content) // 5])
         f.close()
 
-    stop = False
-    while not stop:
-        content = random.choice(infilling)
+    while True:
+        content = ""
 
-        # Split the content into chunks of 10% characters
-        chunk_size = max(32, min(len(content) // 10, 128))
-        chunks = [
-            content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
-        ]
+        for _ in range(32):
+            sample_idx = random.randrange(len(infilling))
+            sample = infilling.pop(sample_idx)
 
-        if len(chunks) < 10:
-            continue
+            # Split the sample into chunks of characters
+            chunk_size = max(32, min(len(sample) // 10, 128))
+            chunks = [
+                sample[i : i + chunk_size] for i in range(0, len(sample), chunk_size)
+            ]
 
-        for i in range(10):
-            if written < test:
-                f = files["test"]
-            elif written < test + train:
-                f = files["train"]
-            else:
-                stop = True
+            if len(chunks) < 10:
+                continue
 
-            content = random.choice(chunks)
-            encoded = content.encode("utf-8")
-            f.write(encoded)
-            f.write(b"\0")
-            written += len(encoded) + 1
+            for _ in range(9):
+                chunk_idx = random.randrange(len(chunks))
+                chunk = chunks.pop(chunk_idx)
+                content += chunk
+                content += "\u007f"
+            chunk_idx = random.randrange(len(chunks))
+            content += chunks.pop(chunk_idx)
+
+        if written < test:
+            f = files["test"]
+        elif written < test + train:
+            f = files["train"]
+        else:
+            break
+
+        encoded = content.encode("utf-8")
+        f.write(encoded)
+        f.write(b"\0")
+        written += len(encoded) + 1
 
     for f in files.values():
         f.close()

@@ -75,7 +75,7 @@ cargo install tokengeex --features cli
 Here's the full command used to train base vocabularies.
 
 ```shell
-RUST_LOG=debug tokengeex train \
+RUST_LOG=debug RAYON_NUM_THREADS=100 tokengeex train \
     --model 'unigram' \
     --output 'base-131k.json' \
     --logfile 'base-131k.log' \
@@ -97,7 +97,7 @@ RUST_LOG=debug tokengeex train \
 Here's the full command used to train capcode vocabularies.
 
 ```shell
-RUST_LOG=debug tokengeex train \
+RUST_LOG=debug RAYON_NUM_THREADS=100 tokengeex train \
     --model 'unigram' \
     --output 'capcode-131k.json' \
     --logfile 'capcode-131k.log' \

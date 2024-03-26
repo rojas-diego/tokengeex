@@ -8,7 +8,7 @@ use std::{
 };
 
 pub const BASE_RE: &str = r#"(?:^.$)|(?:^ ?(?:[a-z]+):\/\/(?:(?:[a-z0-9]+\.?))+(?::[0-9]{1,5})?\/?$)|(?:^(?:[\[{("'][A-Za-z0-9]+[\]})"'])$)|(?:^(?:[0-9]{1,4}(?:\.[0-9]{1,3})?)$)|(?:^[\/\\_\-\.][a-z0-9]+$)|(?:^ ?[@&!?#$\*][a-z0-9]+$)|(?:^ [0-9]+%$)|(?:^(?: ?(?:(?:[0-9]{1,4}(?:[A-Za-z]+)?)|(?:[A-Za-z]+(?:[0-9]{1,4})?)|[A-Za-z]+))$)|(?:^ ?(?:(?:[0-9]{1,4}(?:[a-zA-Z]+)?)|(?:[a-zA-Z]+(?:[0-9]{1,4})?)|[A-Z]+)(?:(?:[_\-.]|::)(?:(?:[0-9]{1,4}(?:[a-zA-Z]+)?)|(?:[a-zA-Z]+(?:[0-9]{1,4})?)|[A-Z]+))*$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:(?:(?:[[:punct:] DCU]+)?[[:space:]DCU]*)|(?:[[:space:]DCU]*(?:[[:punct:] DCU]+)?))$)|(?:^(?:<\/?[a-z]+(?:>|(?:\/>)|(?: \/>))?)$)|(?:^ ?(?:(?:[A-Za-z]+(?:'[A-Za-z]+)?)|(?:[0-9]{1,4}))(?:(?: [A-Za-z]+(?:'[A-Za-z]+)?)|(?: [0-9]{1,4})){0,2}$)"#;
-pub const CAPCODE_RE: &str = r#"(?:^.$)|(?:^ (?:[a-z]+):\/\/(?:(?:D? [a-z0-9]+(?:\.D)?))+(?::D [0-9]{1,5})?(?:\/D)?$)|(?:^(?:[\[{("']D[UC]? [a-z0-9]+[\]})"'])$)|(?:^(?:D?[UC]? ?[0-9]{1,4}(?:\.D [0-9]{1,2})?)$)|(?:^[\/\\_\-\.]D[UC]? (?:(?:[a-z0-9]+)|(?:D[UC]? ))+$)|(?:^ ?[(@&!?#$\*]D[UC]? [a-z0-9]+$)|(?:^ [0-9]+%$)|(?:^D?[UC]? ?(?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*)$)|(?:^[UC]? ?(?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*)(?:(?:[_\-.]|::)D[UC]? (?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*))*$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:(?:(?:[[:punct:] DCU]+)?[[:space:]DCU]*)|(?:[[:space:]DCU]*(?:[[:punct:] DCU]+)?))$)|(?:^(?:<\/?D[UC]? [a-z]+(?:>|(?:\/>)|(?: \/>)|(?: (?:@D )?[a-z]+(?:="D)?))?)$)|(?:^(?:[UC]?(?:(?: [a-z]+(?:'[a-z]+)?))|(?: [0-9]{1,4})){1,3}$)|(?:^ ?(?:(?:!=)|(?:!==)|(?:==)|(?:=))D?[UC]? (?:(?:[a-z]+)|(?:[0-9]{1,3}(?:\.[0-9]{1,3})?))$)"#;
+pub const CAPCODE_RE: &str = r#"(?:^.$)|(?:^ (?:[a-z]+):\/\/(?:(?:D? [a-z0-9]+(?:\.D)?))+(?::D [0-9]{1,5})?(?:\/D)?$)|(?:^(?:[\[{("']D[UC]? [a-z0-9]+[\]})"'])$)|(?:^(?:D?[UC]? ?[0-9]{1,4}(?:\.D [0-9]{1,2})?)$)|(?:^[\/\\_\-\.]D[UC]? (?:(?:[a-z0-9]+)|(?:D[UC]? ))+$)|(?:^ ?(?:[\[(@&!?#$\*]|::)D[UC]? [a-z0-9]+$)|(?:^ ?[a-z0-9]+(?:%|(?:\(D[UC]?))$)|(?:^D?[UC]? ?(?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*)$)|(?:^[UC]? ?(?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*)(?:(?:[_\-.]|::)D[UC]? (?:(?:(?:[0-9]{1,4})(?:D[UC]? (?:[a-z]+))?)|(?:(?:[a-z]+)(?:D[UC]? (?:[0-9]{1,4}))?)|(?:[a-z]+)(D[UC]? [a-z]+)*))*$)|(?:^[\u3400-\u4DBF\u4E00-\u9FFF]+$)|(?:^(?:(?:(?:[[:punct:] DCU]+)?[[:space:]DCU]*)|(?:[[:space:]DCU]*(?:[[:punct:] DCU]+)?))$)|(?:^(?:<\/?D[UC]? [a-z]+(?:>|(?:\/>)|(?: \/>)|(?: (?:@D )?[a-z]+(?:="D)?))?)$)|(?:^(?:[UC]?(?:(?: [a-z]+(?:'[a-z]+)?))|(?: [0-9]{1,4})){1,3}$)|(?:^(?:,D?[UC]? ?[a-z0-9]+)$)|(?:^(?:\/D [a-zA-Z0-9]+)+$)|(?:^ ?(?:(?:!=)|(?:!==)|(?:==)|(?:=))D?[UC]? (?:(?:[a-z]+)|(?:[0-9]{1,3}(?:\.[0-9]{1,3})?))$)"#;
 
 pub struct VocabularyGenerator {
     max_token_length: usize,
@@ -292,7 +292,7 @@ mod tests {
     }
 
     fn space_punctuation_word_capcode_regex() -> Regex {
-        let pattern = r#" ?[(@&!?#$\*]D[UC]? [a-z0-9]+"#;
+        let pattern = r#" ?(?:[\[(@&!?#$\*]|::)D[UC]? [a-z0-9]+"#;
 
         let re = format!("^{}$", pattern);
         let re = Regex::new(&re).unwrap();
@@ -303,12 +303,12 @@ mod tests {
     }
 
     fn space_word_punctuation_capcode_regex() -> Regex {
-        let pattern = r#" [0-9]+%"#;
+        let pattern = r#" ?[a-z0-9]+(?:%|(?:\(D[UC]?))"#;
 
         let re = format!("^{}$", pattern);
         let re = Regex::new(&re).unwrap();
 
-        assert_regex_matches(&re, &[" 10%", " 100%"], &["10%"]);
+        assert_regex_matches(&re, &[" 10%", " 100%"], &[]);
 
         re
     }
@@ -475,6 +475,42 @@ mod tests {
         re
     }
 
+    fn paths_capcode_regex() -> Regex {
+        let path = r#"(?:\/D [a-zA-Z0-9]+)+"#;
+
+        let re = format!("^{}$", path);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[
+                "/D hello/D 123",
+                "/D hello/D 123/D 456",
+                "/D hello/D 123/D 456/D 789",
+                "/D hello/D 123/D 456/D 789/D abc",
+                "/D hello/D 123/D 456/D 789/D abc/D def",
+            ],
+            &[],
+        );
+
+        re
+    }
+
+    fn comma_word_capcode_regex() -> Regex {
+        let pattern = r#"(?:,D?[UC]? ?[a-z0-9]+)"#;
+
+        let re = format!("^{}$", pattern);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[",D word", ",U word", ", 123"],
+            &["12345", " 12345", " word12345"],
+        );
+
+        re
+    }
+
     #[test]
     fn test_capcode_regexes() {
         // Single character
@@ -505,6 +541,10 @@ mod tests {
         let multiple_words = multiple_words_capcode_regex();
         // Equal word
         let equal_word = equal_word_capcode_regex();
+        // Paths
+        let paths = paths_capcode_regex();
+        // Comma
+        let comma_word = comma_word_capcode_regex();
 
         let capcode_regex = Regex::new(
             &[
@@ -521,6 +561,8 @@ mod tests {
                 punctuation_whitespace,
                 html_tag,
                 multiple_words,
+                comma_word,
+                paths,
                 equal_word,
             ]
             .map(|re| format!("(?:{})", re.as_str()))
@@ -576,6 +618,15 @@ mod tests {
                 // Punctuation with whitespace
                 "\n\n} DCU",
                 "}\n\nDCU",
+                // Some more
+                "::D new",
+                "[D i",
+                "(D self",
+                "!= nil",
+                "=DC none",
+                "print(D",
+                "/D usr/D bin",
+                ", 0",
             ],
             &[
                 "12345",

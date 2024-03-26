@@ -2,7 +2,6 @@ use pyo3::create_exception;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3::types::*;
-use tokengeex::ScoredToken;
 use tokengeex::{Token, TokenID};
 
 create_exception!(tokengeex, TokenGeeXError, pyo3::exceptions::PyException);
@@ -88,8 +87,14 @@ impl PyTokenizer {
         self.tokenizer.special_token_to_id(token)
     }
 
-    fn id_to_token(&self, id: TokenID) -> Option<ScoredToken> {
-        self.tokenizer.id_to_token(id)
+    fn id_to_token(&self, py: Python, id: TokenID) -> Option<(Py<PyBytes>, f64)> {
+        let token = self.tokenizer.id_to_token(id);
+
+        if let Some(token) = token {
+            Some((PyBytes::new(py, &token.0).into(), token.1))
+        } else {
+            None
+        }
     }
 
     fn id_to_special_token(&self, id: TokenID) -> Option<String> {

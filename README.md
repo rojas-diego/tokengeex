@@ -19,15 +19,15 @@ tokenizer = tokengeex.load("code-32k-strict.json")
 
 # Vocab
 print(tokenizer.vocab_size()) # 32768
-print(tokenizer.token_to_id("token")) # 13513
-print(tokenizer.id_to_token(13513)) # "token"
+print(tokenizer.token_to_id(b"token")) # 13513
+print(tokenizer.id_to_token(13513)) # (b"token", -13.322)
 
 # Encode
 ids = tokenizer.encode("def main(): print(\"Hello world!\")")
 print(ids) # [68, 437, 12747, 58, 14653, 2807, 1735, 10120]
 
 # Decode
-print(tokenizer.decode(ids)) # "def main(): print(\"Hello world!\")"
+print(tokenizer.decode(ids, include_special_tokens=False)) # "def main(): print(\"Hello world!\")"
 
 # Byte fallbacks
 print([tokenizer.id_to_token(id) for id in tokenizer.encode("电脑")]) # ["电", "<0xe8>", "<0x84>", "<0x91>"]
@@ -48,16 +48,16 @@ fn main() {
     let tokenizer = tokengeex::load("code-32k-strict.json").unwrap();
 
     // Vocab
-    println!("{}", tokenizer.vocab_size()); // 32768
-    println!("{}", .token_to_id("token").unwrap()) // 13513
-    println!("{:?}", .id_to_token(13513).unwrap()) // "token"
+    println!("{}", tokenizer.vocab_size());
+    println!("{}", tokenizer.token_to_id("token").unwrap())
+    println!("{:?}", tokenizer.id_to_token(13513).unwrap())
 
     // Encode
     let ids = tokenizer.encode("def main(): print(\"Hello world!\")");
     println!("{:?}", ids); // [68, 437, 12747, 58, 14653, 2807, 1735, 10120]
 
     // Decode
-    println!("{:?}", tokenizer.decode(ids)); // "def main(): print(\"Hello world!\")"
+    println!("{:?}", tokenizer.decode(ids, false)); // "def main(): print(\"Hello world!\")"
 
     // Byte fallbacks
     println!("{:?}", tokenizer.encode("电脑").map(|id| tokenizer.id_to_token(id))); // ["电", "<0xe8>", "<0x84>", "<0x91>"]

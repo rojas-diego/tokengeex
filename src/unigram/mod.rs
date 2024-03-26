@@ -324,7 +324,7 @@ impl Model for Unigram {
         I: IntoIterator<Item = ScoredToken>,
     {
         for token in tokens {
-            let (token, score) = token.into();
+            let (token, score) = token;
             let id = self.vocab.len() as u32;
             self.trie.push(&token, (id, token.len() as u32));
             self.token_to_ids.insert(token.clone(), id);

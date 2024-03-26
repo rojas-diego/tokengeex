@@ -4,8 +4,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
 
 use crate::{
-    utils::parallelism::*, Model, ModelWrapper, Processor, ProcessorWrapper, Result, ScoredToken,
-    Token, TokenID,
+    Model, ModelWrapper, Processor, ProcessorWrapper, Result, ScoredToken, Token, TokenID,
 };
 
 #[derive(Clone)]

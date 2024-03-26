@@ -607,13 +607,15 @@ fn bpe(
     ignore: &str,
 ) {
     log::info!(
-        "BPE | merges={} step={} score_scale_factor={} max_merge_length={}",
+        "BPE | merges={} step={} score_scale_factor={} max_merge_length={} ignore={:?}",
         num_merges,
         step,
         score_scale_factor,
-        max_merge_length
+        max_merge_length,
+        ignore
     );
 
+    let ignore = regex::Regex::new(ignore).unwrap();
     let mut tokenizer = tokengeex::load(vocab).unwrap();
     let mut logfile = FileLogger::new("/dev/null");
 
@@ -632,6 +634,8 @@ fn bpe(
         };
         evaluate_impl(&mut logfile, "test", 0, &test, &model)
     };
+
+    let mut ignored_pairs = FnvHashMap::<(TokenID, TokenID), usize>::default();
 
     for merges_completed in (0..num_merges).step_by(step) {
         let mut merges = std::cmp::min(step, num_merges - merges_completed);
@@ -678,6 +682,8 @@ fn bpe(
                 break;
             }
 
+            let pair = (a, b);
+
             let a = tokenizer.model_mut().vocab()[a as usize].clone();
             let b = tokenizer.model_mut().vocab()[b as usize].clone();
 
@@ -685,7 +691,18 @@ fn bpe(
             token.extend_from_slice(&b.0);
             let score = (a.1 + b.1) * score_scale_factor;
 
-            if token.len() > max_merge_length {
+            if token.len() > max_merge_length || ignore.is_match(&String::from_utf8_lossy(&token)) {
+                if !ignored_pairs.contains_key(&pair) {
+                    log::warn!(
+                        "Ignoring merge {:?} + {:?} ({}) -> {:?} (score: {:.2})",
+                        String::from_utf8_lossy(&a.0),
+                        String::from_utf8_lossy(&a.0),
+                        freq,
+                        String::from_utf8_lossy(&token),
+                        score
+                    );
+                    ignored_pairs.insert(pair, freq);
+                }
                 continue;
             }
 

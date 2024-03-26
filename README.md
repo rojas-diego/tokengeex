@@ -125,8 +125,8 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
 RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex bpe \
     --output ./capcode-131k-extended.json \
     --vocab ./capcode-131k.json \
-    --num-merges 10000 \
-    --step 100 \
+    --num-merges 1000 \
+    --step 10 \
     --score-scale-factor 0.75 \
     --max-merge-length 12 \
     --ignore '^$' \

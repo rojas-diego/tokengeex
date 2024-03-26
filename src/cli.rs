@@ -645,7 +645,7 @@ fn bpe(
     for merges_completed in (0..num_merges).step_by(step) {
         let mut merges = std::cmp::min(step, num_merges - merges_completed);
 
-        let chunk_size = par_chunk_size(samples.len(), current_num_threads() * 512, 10);
+        let chunk_size = par_chunk_size(samples.len(), current_num_threads() * 128, 10);
         let task = Task::new("BPE Merge", samples.len(), chunk_size);
         let pair_frequencies = RwLock::new(FnvHashMap::<(TokenID, TokenID), usize>::default());
 
@@ -750,9 +750,16 @@ fn bpe(
         };
 
         // Compare the new evaluation with the previous one.
+        let mut total_chars = 0;
+        let mut baseline_total_tokens = 0;
+        let mut new_total_tokens = 0;
         for source in eval.compression.keys() {
             let baseline_compression = baseline.compression.get(source).unwrap();
             let new_compression = eval.compression.get(source).unwrap();
+
+            total_chars += new_compression.num_chars;
+            baseline_total_tokens += baseline_compression.num_tokens;
+            new_total_tokens += new_compression.num_tokens;
 
             log::info!(
                 "DELTA | {:>18} | {:<4} -> {:<4} | +{:04.2} | +{:05.2}%",
@@ -765,6 +772,19 @@ fn bpe(
                     * 100.0)
             );
         }
+
+        let total_chars_per_token =
+            ((total_chars as f64 / new_total_tokens as f64) * 100.0).round() / 100.0;
+        let baseline_chars_per_token =
+            ((total_chars as f64 / baseline_total_tokens as f64) * 100.0).round() / 100.0;
+
+        log::info!(
+            "TOTAL | {:<4} -> {:<4} | +{:04.2} | +{:05.2}%",
+            baseline_chars_per_token,
+            total_chars_per_token,
+            total_chars_per_token - baseline_chars_per_token,
+            ((total_chars_per_token - baseline_chars_per_token) / baseline_chars_per_token * 100.0)
+        );
     }
 
     log::info!("Writing to {:?}.", output);

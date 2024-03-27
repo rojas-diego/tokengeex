@@ -627,6 +627,7 @@ mod tests {
                 "print(D",
                 "/D usr/D bin",
                 ", 0",
+                "::",
             ],
             &[
                 "12345",

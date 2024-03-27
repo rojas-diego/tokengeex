@@ -18,6 +18,7 @@ pub struct Tokenizer {
 #[derive(Clone, Copy, Debug)]
 pub enum TokenizerError {
     TokenIdOutOfBounds(TokenID),
+    InvalidJSON,
 }
 
 impl std::fmt::Display for TokenizerError {
@@ -25,6 +26,9 @@ impl std::fmt::Display for TokenizerError {
         match self {
             TokenizerError::TokenIdOutOfBounds(id) => {
                 write!(f, "token id {} is out of bounds", id)
+            }
+            TokenizerError::InvalidJSON => {
+                write!(f, "invalid JSON")
             }
         }
     }
@@ -35,6 +39,12 @@ impl std::error::Error for TokenizerError {}
 impl From<TokenizerError> for Box<dyn std::error::Error + Send> {
     fn from(err: TokenizerError) -> Self {
         Box::new(err)
+    }
+}
+
+impl From<serde_json::Error> for TokenizerError {
+    fn from(_: serde_json::Error) -> Self {
+        TokenizerError::InvalidJSON
     }
 }
 
@@ -260,6 +270,14 @@ impl Tokenizer {
 
     pub fn processors_mut(&mut self) -> &mut Vec<ProcessorWrapper> {
         &mut self.processors
+    }
+}
+
+impl std::str::FromStr for Tokenizer {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        serde_json::from_str(s).map_err(|_| TokenizerError::InvalidJSON.into())
     }
 }
 

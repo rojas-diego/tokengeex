@@ -1,0 +1,30 @@
+{
+  "name": "tokengeex",
+  "version": "0.6.2",
+  "description": "",
+  "main": "index.node",
+  "scripts": {
+    "build": "cargo-cp-artifact -nc index.node -- cargo build --message-format=json-render-diagnostics",
+    "build-debug": "npm run build --",
+    "build-release": "npm run build -- --release",
+    "install": "npm run build-release",
+    "test": "cargo test"
+  },
+  "author": "Diego ROJAS <rojasdiegopro@gmail.com> (罗杰斯)",
+  "license": "ISC",
+  "devDependencies": {
+    "cargo-cp-artifact": "^0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rojas-diego/tokengeex.git"
+  },
+  "keywords": [
+    "NLP",
+    "tokenizers"
+  ],
+  "bugs": {
+    "url": "https://github.com/rojas-diego/tokengeex/issues"
+  },
+  "homepage": "https://github.com/rojas-diego/tokengeex#readme"
+}

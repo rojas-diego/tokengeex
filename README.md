@@ -101,9 +101,9 @@ Here's the full command used to train capcode vocabularies.
 ```shell
 RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --model 'unigram' \
-    --output 'capcode-131k.json' \
-    --logfile 'capcode-131k.log' \
-    --vocab-size 131072 \
+    --output 'capcode-65k.json' \
+    --logfile 'capcode-65k.log' \
+    --vocab-size 65536 \
     --processor 'nfc' \
     --processor 'crlf' \
     --processor 'capcode' \

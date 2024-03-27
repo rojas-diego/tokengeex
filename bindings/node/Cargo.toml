@@ -1,0 +1,16 @@
+[package]
+name = "tokengeex-node"
+version = "0.1.0"
+authors = ["Diego ROJAS <rojasdiegopro@gmail.com> (罗杰斯)"]
+license = "ISC"
+edition = "2021"
+exclude = ["index.node"]
+
+[lib]
+name = "tokengeex"
+crate-type = ["cdylib"]
+
+[dependencies]
+tokengeex = { path = "../..", version = "0.6.2" }
+serde_json = "1.0.113"
+neon = "1"

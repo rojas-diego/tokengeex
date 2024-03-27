@@ -51,17 +51,6 @@ def make_element(i, id, token, score):
             element += f'<span style="background-color: {color}; white-space: nowrap;">{escaped}</span>'
             element += after
 
-    # el = ""
-    # for split in splits:
-    #     if split == "\n":
-    #         el += f'<span style="background-color: {color}; white-space: nowrap;">↵</span><br>'
-    #         el += '</pre><pre style="margin-bottom: 0px; height: 16px; font-family: "Source Sans Pro", ui-sans-serif, system-ui, sans-serif; font-size: 12px;">'
-    #     elif split == "\t":
-    #         el += f"<span style=\"background-color: {color}; white-space: nowrap; font-family: 'Source Sans Pro', ui-sans-serif, system-ui, sans-serif; font-size: 12px;\">⇥</span>"
-    #     else:
-    #         escaped = html.escape(split)
-    #         el += f"<span style=\"background-color: {color}; white-space: nowrap; font-family: 'Source Sans Pro', ui-sans-serif, system-ui, sans-serif; font-size: 12px;\">{escaped}</span>"
-
     return element
 
 
@@ -140,10 +129,17 @@ with gr.Blocks() as demo:
             submit_button = gr.Button("Submit")
 
     with gr.Row():
-        output_html = gr.HTML(
-            value="",
+        out_num_tokens = gr.Number(
+            label="Number of Tokens",
+        )
+        out_characters_per_token = gr.Number(
+            label="Characters per Token",
         )
 
+    with gr.Row():
+        out_html = gr.HTML(
+            value="",
+        )
         output_text = gr.Code()
 
     def submit(vocab: str, input: str, lang: str):
@@ -170,6 +166,11 @@ with gr.Blocks() as demo:
             for (id, token) in tokens
         ]  # type: ignore
 
+        num_chars = len(input)
+        num_tokens = len(tokens)
+        characters_per_token = num_chars / num_tokens
+        characters_per_token = round(characters_per_token, 2)
+
         # Transform each token into an HTML element
         tokens = [
             make_element(i, id, token, score)  # type: ignore
@@ -179,6 +180,12 @@ with gr.Blocks() as demo:
         html = f'<code style="background-color: white; font-family: monospace; overflow: scroll"><pre style="overflow: scroll;">{"".join(tokens)}</pre></code>'
 
         return (
+            gr.Number(
+                value=num_tokens,
+            ),
+            gr.Number(
+                value=characters_per_token,
+            ),
             gr.HTML(
                 value=html,
             ),
@@ -190,7 +197,7 @@ with gr.Blocks() as demo:
     submit_button.click(
         submit,
         inputs=[drop_down_vocab, code, drop_down_lang],
-        outputs=[output_html, output_text],
+        outputs=[out_num_tokens, out_characters_per_token, out_html, output_text],
     )
 
 demo.launch()  # Share your demo with just 1 extra parameter 🚀

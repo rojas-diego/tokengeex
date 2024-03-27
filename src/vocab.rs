@@ -968,6 +968,7 @@ mod tests {
                 "<img/>",
                 "<img />",
                 "<div",
+                " . ",
             ],
             &[
                 // Too long numbers

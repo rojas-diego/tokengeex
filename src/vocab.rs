@@ -136,7 +136,10 @@ impl VocabularyGenerator {
             if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token);
                 keep.insert(token.as_bytes().to_vec());
-                vocab.push((token.as_bytes().to_vec(), added_tokens_freq[i] as f64));
+                vocab.push((
+                    token.as_bytes().to_vec(),
+                    (added_tokens_freq[i] * token.len()) as f64,
+                ));
             }
         }
 
@@ -144,7 +147,10 @@ impl VocabularyGenerator {
         for (i, token) in suggested_tokens.iter().enumerate() {
             if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token);
-                vocab.push((token.as_bytes().to_vec(), suggested_tokens_freq[i] as f64));
+                vocab.push((
+                    token.as_bytes().to_vec(),
+                    (suggested_tokens_freq[i] * token.len()) as f64,
+                ));
             }
         }
 
@@ -156,7 +162,7 @@ impl VocabularyGenerator {
 
             if !seen.contains(token.as_str()) && token.len() > 1 {
                 seen.insert(token.as_str());
-                vocab.push((token.as_bytes().to_vec(), *freq as f64));
+                vocab.push((token.as_bytes().to_vec(), (freq * token.len()) as f64));
             }
         }
 

@@ -1,7 +1,21 @@
+import glob
 import html
+import os
 
 import gradio as gr
 import tokengeex
+
+# Scan for vocabularies
+vocabs = []
+for file in glob.glob("./hub/vocab/*.json"):
+    if os.path.isfile(file):
+        vocabs.append(file.split("/")[-1])
+
+# Scan for languages
+langs = []
+for file in glob.glob("./hub/data/test/*.bin"):
+    if os.path.isfile(file):
+        langs.append(file.split("/")[-1].split(".")[0])
 
 
 def split_and_keep_sep(s, sep):
@@ -15,7 +29,7 @@ def split_and_keep_sep(s, sep):
             parts.append(char)
         else:
             current.append(char)
-    if current:  # Add the last part if there's any
+    if current:
         parts.append("".join(current))
     return parts
 
@@ -58,15 +72,8 @@ with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column():
             drop_down_vocab = gr.Dropdown(
-                choices=[
-                    "base-131k.json",
-                    "capcode-131k.json",
-                    "capcode-131k-extended.json",
-                    "capcode-65k.json",
-                    "capcode-65k-extended.json",
-                    # "base-65k.json",
-                ],
-                value="base-131k.json",
+                choices=vocabs,
+                value=vocabs[0],
                 label="Vocabulary File",
             )
             code = gr.Code(
@@ -76,54 +83,7 @@ with gr.Blocks() as demo:
             )
             drop_down_lang = gr.Dropdown(
                 label="Example",
-                choices=[
-                    "none",
-                    "assembly",
-                    "cmake",
-                    "dart",
-                    "go",
-                    "infilling",
-                    "jsx",
-                    "makefile",
-                    "php",
-                    "ruby",
-                    "sql",
-                    "typescript",
-                    "zig",
-                    "c-sharp",
-                    "cpp",
-                    "diff",
-                    "haskell",
-                    "java",
-                    "julia",
-                    "markdown",
-                    "powershell",
-                    "rust",
-                    "swift",
-                    "vue",
-                    "c",
-                    "css",
-                    "dockerfile",
-                    "hcl",
-                    "javascript",
-                    "kotlin",
-                    "pascal",
-                    "python",
-                    "scala",
-                    "tex",
-                    "xml",
-                    "chinese-markdown",
-                    "cuda",
-                    "elixir",
-                    "html",
-                    "json",
-                    "lua",
-                    "perl",
-                    "r",
-                    "shell",
-                    "toml",
-                    "yaml",
-                ],
+                choices=["none"] + langs,  # type: ignore
             )
 
             submit_button = gr.Button("Submit")

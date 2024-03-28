@@ -738,12 +738,16 @@ mod tests {
     }
 
     fn space_punctuation_word_regex() -> Regex {
-        let pattern = r#" ?[@&!?#$\*][A-Za-z0-9]+"#;
+        let pattern = r#" ?[@&!?#$\*\(\[][A-Za-z0-9]+"#;
 
         let re = format!("^{}$", pattern);
         let re = Regex::new(&re).unwrap();
 
-        assert_regex_matches(&re, &[" &word", "@123", " !word", "*t"], &[":word"]);
+        assert_regex_matches(
+            &re,
+            &[" &word", "@123", " !word", "*t", "(self"],
+            &[":word"],
+        );
 
         re
     }
@@ -814,7 +818,7 @@ mod tests {
     }
 
     fn html_tag_regex() -> Regex {
-        let html_tag = r#"(?:<\/?[a-z]+(?:>|(?:\/>)|(?: \/>)|(?: @?[A-Za-z]+(?:=")?))?)"#;
+        let html_tag = r#"(?:<\/?[A-Za-z]+(?:>|(?:\/>)|(?: \/>)|(?: @?[A-Za-z]+(?:=")?))?)"#;
 
         let re = format!("^{}$", html_tag);
         let re = Regex::new(&re).unwrap();
@@ -824,6 +828,41 @@ mod tests {
                 "<div>", "</div>", "<div>", "<div>", "<img/>", "<img />", "<div",
             ],
             &["a>", "<a /", "<a / >"],
+        );
+
+        re
+    }
+
+    fn html_attribute_regex() -> Regex {
+        let html_attribute = r#" (?:[A-Za-z]+(?:=(?:"|'))?)"#;
+
+        let re = format!("^{}$", html_attribute);
+        let re = Regex::new(&re).unwrap();
+        assert_regex_matches(&re, &[" class=\""], &[]);
+
+        re
+    }
+
+    fn css_attribute_regex() -> Regex {
+        let css_attribute = r#"[A-Za-z\-]+: "#;
+
+        let re = format!("^{}$", css_attribute);
+        let re = Regex::new(&re).unwrap();
+        assert_regex_matches(&re, &["color: ", "text-align: "], &[]);
+
+        re
+    }
+
+    fn colon_word_regex() -> Regex {
+        let pattern = r#": ?(?:[A-Za-z0-9]+)"#;
+
+        let re = format!("^{}$", pattern);
+        let re = Regex::new(&re).unwrap();
+
+        assert_regex_matches(
+            &re,
+            &[": word", ": 123"],
+            &["12345", " 12345", " word12345"],
         );
 
         re
@@ -874,7 +913,7 @@ mod tests {
     }
 
     fn equal_word_regex() -> Regex {
-        let pattern = r#" ?(?:(?:!=)|(?:!==)|(?:==)|(?:=)) ?[A-Za-z0-9_]+(?:\.[0-9]{1,3})?"#;
+        let pattern = r#" ?(?:(?:!=)|(?:!==)|(?:==)|(?:=)|(?::=)) ?[A-Za-z0-9_]+(?:\.[0-9]{1,3})?"#;
 
         let re = format!("^{}$", pattern);
         let re = Regex::new(&re).unwrap();
@@ -882,6 +921,7 @@ mod tests {
         assert_regex_matches(
             &re,
             &[
+                "=1",
                 " == nil",
                 "!== undefined",
                 " = 1.0",
@@ -938,6 +978,12 @@ mod tests {
         let punctuation_whitespace = punctuation_whitespace();
         // HTML tag
         let html_tag = html_tag_regex();
+        // HTML attribute
+        let html_attribute = html_attribute_regex();
+        // CSS attribute
+        let css_attribute = css_attribute_regex();
+        // Colon word
+        let colon_word = colon_word_regex();
         // Multiple words
         let multiple_words = multiple_words_regex();
         // Equal
@@ -963,6 +1009,9 @@ mod tests {
                 multiple_words,
                 equal,
                 comma,
+                html_attribute,
+                css_attribute,
+                colon_word,
             ]
             .map(|re| format!("(?:{})", re.as_str()))
             .join("|"),
@@ -1045,6 +1094,14 @@ mod tests {
                 "(error)",
                 "pointer->",
                 "this.",
+                "(self",
+                "<String>",
+                " .",
+                " :",
+                "..",
+                " class=\"",
+                "[1",
+                "word: ",
             ],
             &[
                 // Too long numbers

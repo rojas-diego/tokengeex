@@ -85,7 +85,7 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --processor 'nfc' \
     --processor 'crlf' \
     --initial-vocab-max-token-length 32 \
-    --initial-vocab-size 10000000 \
+    --initial-vocab-size 2500000 \
     --initial-vocab-insert-probability 0.01 \
     --initial-vocab-allow "$(cat data/base.regex)" \
     --unigram-shrinking-factor 0.8 \
@@ -108,7 +108,7 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --processor 'crlf' \
     --processor 'capcode' \
     --initial-vocab-max-token-length 32 \
-    --initial-vocab-size 10000000 \
+    --initial-vocab-size 2500000 \
     --initial-vocab-insert-probability 0.01 \
     --initial-vocab-allow "$(cat data/capcode.regex)" \
     --unigram-shrinking-factor 0.8 \

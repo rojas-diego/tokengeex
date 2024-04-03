@@ -9,6 +9,7 @@ import json
 
 import sentencepiece as spm
 import tiktoken
+import tokenizers
 import transformers
 
 if __name__ == "__main__":
@@ -68,6 +69,15 @@ if __name__ == "__main__":
             return tokenizer.encode(text, add_special_tokens=False)
 
         encode_fn = encode_huggingface
+
+    elif args.l == "tokenizers":
+        tokenizer = tokenizers.Tokenizer.from_file(args.f)
+        vocab_size = tokenizer.get_vocab_size()
+
+        def encode_tokenizers(text):
+            return tokenizer.encode(text).ids
+
+        encode_fn = encode_tokenizers
 
     else:
         raise ValueError(f"Invalid tokenization library: {args.l}")

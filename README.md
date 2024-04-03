@@ -85,7 +85,7 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --processor 'nfc' \
     --processor 'crlf' \
     --initial-vocab-max-token-length 32 \
-    --initial-vocab-size 2500000 \
+    --initial-vocab-size 5000000 \
     --initial-vocab-insert-probability 0.01 \
     --initial-vocab-allow "$(cat data/base.regex)" \
     --unigram-shrinking-factor 0.8 \
@@ -108,7 +108,7 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --processor 'crlf' \
     --processor 'capcode' \
     --initial-vocab-max-token-length 32 \
-    --initial-vocab-size 2500000 \
+    --initial-vocab-size 5000000 \
     --initial-vocab-insert-probability 0.01 \
     --initial-vocab-allow "$(cat data/capcode.regex)" \
     --unigram-shrinking-factor 0.8 \
@@ -123,12 +123,12 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
 
 ```shell
 RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex bpe \
-    --output ./capcode-131k-extended.json \
-    --vocab ./capcode-131k.json \
+    --output ./base-131k-extended.json \
+    --vocab ./base-131k.json \
     --num-merges 1000 \
-    --step 10 \
-    --score-scale-factor 0.75 \
-    --max-merge-length 12 \
+    --step 100 \
+    --score-scale-factor 0.85 \
+    --max-merge-length 16 \
     --ignore '^$' \
     $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin "; done)
 ```

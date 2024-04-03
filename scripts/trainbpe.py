@@ -55,11 +55,19 @@ def train_sentencepiece(samples: Iterable[str], output: str, vocab_size: int):
         vocab_size=vocab_size,
         model_prefix=output,
         model_type="bpe",
-        character_coverage=0.98,
-        num_threads=8,
-        max_sentencepiece_length=32,
-        allow_whitespace_only_pieces=True,
+        input_sentence_size=10000000,
+        shuffle_input_sentence=True,
+        num_threads=100,
+        split_digits=True,
         byte_fallback=True,
+        character_coverage=0.999,
+        max_sentencepiece_length=32,
+        add_dummy_prefix=False,
+        allow_whitespace_only_pieces=True,
+        split_by_whitespace=False,
+        remove_extra_whitespaces=False,
+        normalization_rule_name="identity",
+        train_extremely_large_corpus=True,
     )
 
 

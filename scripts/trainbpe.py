@@ -14,7 +14,7 @@ from tokenizers.decoders import ByteLevel as ByteLevelDecoder
 from tokenizers.pre_tokenizers import ByteLevel as ByteLevelEncoder
 
 
-def load_samples(input: str) -> Iterable[str]:
+def load_samples(input: str, proportion: float) -> Iterable[str]:
     files = glob.glob(f"{input}/*.bin")
     print(f"Found {len(files)} .bin files in {input}")
     # Each .bin file is a 0x00 separated list of UTF-8 samples.
@@ -22,7 +22,7 @@ def load_samples(input: str) -> Iterable[str]:
         with open(file, "rb") as f:
             samples = f.read().decode("utf-8").split("\0")
             print(f"Loaded {len(samples)} samples from {file}")
-            yield from samples
+            yield from samples[: int(len(samples) * proportion)]
 
 
 def train_huggingface(samples: Iterable[str], output: str, vocab_size: int):
@@ -98,15 +98,22 @@ if __name__ == "__main__":
         type=int,
         help="The size of the vocabulary to use.",
     )
+    parser.add_argument(
+        "-p",
+        default=1.0,
+        type=float,
+        help="Proportion of samples to use for training (between 0 and 1).",
+    )
+
     args = parser.parse_args()
 
-    lib, input, output, vocab_size = args.l, args.i, args.o, args.v
+    lib, input, output, vocab_size, proportion = args.l, args.i, args.o, args.v, args.s
 
     print(
         f"Training {lib} BPE model with {vocab_size} vocabulary size from {input}. Writing to {output}."
     )
 
-    samples = load_samples(input)
+    samples = load_samples(input, proportion)
 
     if lib == "huggingface":
         train_huggingface(samples, output, vocab_size)

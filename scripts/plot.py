@@ -130,7 +130,11 @@ def plot_cpt(args, data, filename):
 def plot_freq(args, data, filename):
     # {frequency_buckets: [usize], sample_frequency_buckets: [usize]}
     for config in [
-        ("frequency_buckets", "Token Frequency Distribution", args.freq),
+        (
+            "frequency_buckets",
+            "Token Frequency Distribution",
+            args.freq,
+        ),
         (
             "sample_frequency_buckets",
             "Sample Token Frequency Distribution",
@@ -139,18 +143,25 @@ def plot_freq(args, data, filename):
     ]:
         key, title, out = config
 
-        data = np.array(data[key], dtype=np.float64)
-        data /= data.sum()
-        data *= 100
+        pltdata = np.array(data[key], dtype=np.float64)
+        pltdata /= pltdata.sum()
+        pltdata *= 100
 
         # Create the figure and axis objects
         fig, ax = plt.subplots(figsize=(10, 6))
 
-        data = pd.DataFrame({"Buckets": range(1, len(data) + 1), "Frequency": data})
+        pltdata = pd.DataFrame(
+            {"Buckets": range(1, len(pltdata) + 1), "Frequency": pltdata}
+        )
 
         # Plot the data
         sns.barplot(
-            x="Buckets", y="Frequency", data=data, ax=ax, color="lightblue", width=1.0
+            x="Buckets",
+            y="Frequency",
+            data=pltdata,
+            ax=ax,
+            color="lightblue",
+            width=1.0,
         )
 
         ax.set_yscale("log")

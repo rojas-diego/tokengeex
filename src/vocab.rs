@@ -1098,4 +1098,54 @@ mod tests {
         );
         println!("{}", base_regex);
     }
+
+    #[test]
+    fn test_simple_base_regexes() {
+        // Single character
+        let lone_char = Regex::new(r#"^.$"#).unwrap();
+        // Number
+        let number = Regex::new(r#"^[0-9]{1,3}$"#).unwrap();
+        // Word
+        let word = Regex::new(r#"^ ?[A-Za-z]+$"#).unwrap();
+        // Punctuation + word
+        let punctuation_word = Regex::new(r#"^[[:punct:]][A-Za-z]+$"#).unwrap();
+        // Chinese
+        let chinese = chinese_regex();
+        // Punctuation + Carriage Return
+        let punctuation_cr = Regex::new(r#"^[[:punct:]]*\n$"#).unwrap();
+        // Space + Punctuation
+        let space_punctuation = Regex::new(r#"^ [[:punct:]]+$"#).unwrap();
+        // Punctuation
+        let punctuation = Regex::new(r#"^[[:punct:]]+$"#).unwrap();
+        // Repeated spaces or tabs
+        let spacing = Regex::new(r#"^[\t ]+$"#).unwrap();
+
+        let simple_base_regex = Regex::new(
+            &[
+                lone_char,
+                number,
+                word,
+                punctuation_word,
+                chinese,
+                punctuation_cr,
+                space_punctuation,
+                punctuation,
+                spacing,
+            ]
+            .map(|re| format!("(?:{})", re.as_str()))
+            .join("|"),
+        )
+        .unwrap();
+
+        assert_regex_matches(
+            &simple_base_regex,
+            &[
+                "a", "abc", " word", "1", "123", ".word", ",word", "好", "你好", "\n", " .", " ,",
+                ".", ",", " ", "  ", "   ", "\t", "\t\t", "\t\t\t",
+            ],
+            &["12345", " 12345", "word_word", "word_123_word"],
+        );
+
+        println!("{}", simple_base_regex);
+    }
 }

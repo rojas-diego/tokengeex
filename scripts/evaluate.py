@@ -93,15 +93,20 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Invalid tokenization library: {args.l}")
 
+    num_buckets = 50
+    bucket_size = vocab_size // num_buckets
     out = {
         "epoch": 0,
         "split": "test",
         "vocab_size": vocab_size,
         # lang: {num_tokens: int, num_chars: int, chars_per_token: float}
         "compression": {},
-        "frequency_buckets": np.zeros(vocab_size, dtype=np.int64),
-        "sample_frequency_buckets": np.zeros(vocab_size, dtype=np.int64),
+        "frequency_buckets": [0] * num_buckets,
+        "sample_frequency_buckets": [0] * num_buckets,
     }
+
+    frequency_buckets = np.zeros(vocab_size, dtype=np.int64)
+    sample_frequency_buckets = np.zeros(vocab_size, dtype=np.int64)
 
     for file in glob.glob(args.i):
         filename_base = file.split("/")[-1].split(".")[0]
@@ -116,36 +121,34 @@ if __name__ == "__main__":
             num_chars += len(sample)
 
             for id in tokens:
-                out["frequency_buckets"][id] += 1
+                frequency_buckets[id] += 1
             for id in set(tokens):
-                out["sample_frequency_buckets"][id] += 1
+                sample_frequency_buckets[id] += 1
 
         chars_per_token = round(num_chars / num_tokens, 2)
-
-        num_buckets = 50
-        frequency_buckets = [0] * num_buckets
-        sample_frequency_buckets = [0] * num_buckets
-        bucket_size = vocab_size // num_buckets
-
-        for i in range(num_buckets):
-            frequency_buckets[i] = np.sum(
-                out["frequency_buckets"][i * bucket_size : (i + 1) * bucket_size]
-            )
-            sample_frequency_buckets[i] = np.sum(
-                out["sample_frequency_buckets"][i * bucket_size : (i + 1) * bucket_size]
-            )
 
         out["compression"][filename_base] = {
             "num_tokens": num_tokens,
             "num_chars": num_chars,
             "chars_per_token": chars_per_token,
-            "frequency_buckets": frequency_buckets,
-            "sample_frequency_buckets": sample_frequency_buckets,
         }
 
         print(
             f"{filename_base}, {len(samples)} samples, {num_tokens} tokens, {num_chars} chars, {chars_per_token} chars per token"
         )
+
+    frequency_buckets.sort()
+    sample_frequency_buckets.sort()
+    frequency_buckets = frequency_buckets[::-1]
+    sample_frequency_buckets = sample_frequency_buckets[::-1]
+
+    for i in range(num_buckets):
+        out["frequency_buckets"][i] = np.sum(
+            frequency_buckets[i * bucket_size : (i + 1) * bucket_size]
+        ).item()
+        out["sample_frequency_buckets"][i] = np.sum(
+            sample_frequency_buckets[i * bucket_size : (i + 1) * bucket_size]
+        ).item()
 
     with open(args.o, "w") as f:
         json.dump(out, f)

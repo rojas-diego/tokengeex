@@ -11,6 +11,6 @@ name = "tokengeex"
 crate-type = ["cdylib"]
 
 [dependencies]
-tokengeex = { path = "../..", version = "0.7.0" }
+tokengeex = { path = "../..", version = "0.7.1" }
 serde_json = "1.0.113"
 neon = "1"

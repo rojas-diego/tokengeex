@@ -35,9 +35,9 @@ Experiments with limited data.
 ```bash
 RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --model 'unigram' \
-    --output 'base-131k-10pct.json' \
-    --logfile 'base-131k-10pct.log' \
-    --vocab-size 131072 \
+    --output 'base-65k-10pct.json' \
+    --logfile 'base-65k-10pct.log' \
+    --vocab-size 65536 \
     --processor 'nfc' \
     --processor 'crlf' \
     --initial-vocab-max-token-length 32 \
@@ -52,6 +52,10 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.1 --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/base/suggested-${lang}.json "; done)
 ```
 
+10x increase in corpus size bears no effect on the compression of SentencePiece tokenizers across sizes 16k, 65k, 131k.
+
+We notice an ever so slight drop in performance for base-131k vs base-131k-10pct. However, we observe that the token frequency distributions differ. That of base-131k is smoother indicating that the least frequently occuring tokens in base-131k-10pct are results from overfitting.
+
 # Added tokens & suggested tokens
 
 Use the token frequency buckets and BPE to show that few tokens constitute the majority of tokens. Hence few tokens can greatly benefit the overall compression.
@@ -59,3 +63,5 @@ Use the token frequency buckets and BPE to show that few tokens constitute the m
 # Comments
 
 Re-iterate that BPE generates many junk tokens along the way.
+
+# Better handling of numbers

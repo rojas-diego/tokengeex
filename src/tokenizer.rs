@@ -167,7 +167,15 @@ impl Tokenizer {
 
             match next_special_token_idx {
                 Some(idx) => {
-                    output.push_str(&self.model.decode(&input[..idx])?);
+                    let decoded = &self.model.decode(&input[..idx])?;
+
+                    output.push_str(
+                        &self
+                            .processors
+                            .iter()
+                            .rev()
+                            .fold(decoded.to_string(), |s, p| p.postprocess(&s)),
+                    );
 
                     let special = self
                         .special_tokens

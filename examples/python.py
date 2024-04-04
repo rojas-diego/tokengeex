@@ -1,6 +1,6 @@
 import tokengeex
 
-tokenizer = tokengeex.load("./hub/vocab/base-131k.json")
+tokenizer = tokengeex.load("./hub/vocab/capcode-65k.json")
 
 sentence = "Hello, world!"
 
@@ -13,7 +13,7 @@ decoded = tokenizer.decode(ids, include_special_tokens=False)
 print(decoded)
 
 # Vocabulary
-id = tokenizer.token_to_id(b"Hello")
+id = tokenizer.token_to_id(b"DC hello")
 assert id is not None
 print(id)
 

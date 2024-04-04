@@ -65,3 +65,7 @@ Use the token frequency buckets and BPE to show that few tokens constitute the m
 Re-iterate that BPE generates many junk tokens along the way.
 
 # Better handling of numbers
+
+```
+1|234|567|890
+```

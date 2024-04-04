@@ -100,6 +100,7 @@ if __name__ == "__main__":
         # lang: {num_tokens: int, num_chars: int, chars_per_token: float}
         "compression": {},
         "frequency_buckets": np.zeros(vocab_size, dtype=np.int64),
+        "sample_frequency_buckets": np.zeros(vocab_size, dtype=np.int64),
     }
 
     for file in glob.glob(args.i):
@@ -116,16 +117,22 @@ if __name__ == "__main__":
 
             for id in tokens:
                 out["frequency_buckets"][id] += 1
+            for id in set(tokens):
+                out["sample_frequency_buckets"][id] += 1
 
         chars_per_token = round(num_chars / num_tokens, 2)
 
         num_buckets = 50
         frequency_buckets = [0] * num_buckets
+        sample_frequency_buckets = [0] * num_buckets
         bucket_size = vocab_size // num_buckets
 
         for i in range(num_buckets):
             frequency_buckets[i] = np.sum(
                 out["frequency_buckets"][i * bucket_size : (i + 1) * bucket_size]
+            )
+            sample_frequency_buckets[i] = np.sum(
+                out["sample_frequency_buckets"][i * bucket_size : (i + 1) * bucket_size]
             )
 
         out["compression"][filename_base] = {
@@ -133,6 +140,7 @@ if __name__ == "__main__":
             "num_chars": num_chars,
             "chars_per_token": chars_per_token,
             "frequency_buckets": frequency_buckets,
+            "sample_frequency_buckets": sample_frequency_buckets,
         }
 
         print(

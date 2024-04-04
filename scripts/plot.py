@@ -128,37 +128,47 @@ def plot_cpt(args, data, filename):
 
 
 def plot_freq(args, data, filename):
-    # {frequency_buckets: [usize]}
-    data = np.array(data["frequency_buckets"], dtype=np.float64)
-    data /= data.sum()
-    data *= 100
+    # {frequency_buckets: [usize], sample_frequency_buckets: [usize]}
+    for config in [
+        ("frequency_buckets", "Token Frequency Distribution", args.freq),
+        (
+            "sample_frequency_buckets",
+            "Sample Token Frequency Distribution",
+            args.sample_freq,
+        ),
+    ]:
+        key, title, out = config
 
-    # Create the figure and axis objects
-    fig, ax = plt.subplots(figsize=(10, 6))
+        data = np.array(data[key], dtype=np.float64)
+        data /= data.sum()
+        data *= 100
 
-    data = pd.DataFrame({"Buckets": range(1, len(data) + 1), "Frequency": data})
+        # Create the figure and axis objects
+        fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Plot the data
-    sns.barplot(
-        x="Buckets", y="Frequency", data=data, ax=ax, color="lightblue", width=1.0
-    )
+        data = pd.DataFrame({"Buckets": range(1, len(data) + 1), "Frequency": data})
 
-    ax.set_yscale("log")
-    ax.set_xticklabels([])
-    ax.set_ylim(0.0001, 100.0)
-    ax.yaxis.set_major_formatter("{x}%")
-    ax.set_ylabel("Rate of Occurrence (%)")
-    ax.set_title(f"Token Frequency Distribution ({filename})")
+        # Plot the data
+        sns.barplot(
+            x="Buckets", y="Frequency", data=data, ax=ax, color="lightblue", width=1.0
+        )
 
-    # Show the plot
-    plt.tight_layout()
-    plt.grid(linestyle="dotted")
+        ax.set_yscale("log")
+        ax.set_xticklabels([])
+        ax.set_ylim(0.0001, 100.0)
+        ax.yaxis.set_major_formatter("{x}%")
+        ax.set_ylabel("Rate of Occurrence (%)")
+        ax.set_title(f"{title} ({filename})")
 
-    # Save the plot
-    if args.freq:
-        plt.savefig(args.freq, dpi=300)
-    else:
-        plt.show()
+        # Show the plot
+        plt.tight_layout()
+        plt.grid(linestyle="dotted")
+
+        # Save the plot
+        if out:
+            plt.savefig(out, dpi=300)
+        else:
+            plt.show()
 
 
 if __name__ == "__main__":
@@ -192,6 +202,11 @@ if __name__ == "__main__":
         "--freq",
         type=str,
         help="Path to the output file for token frequency distribution",
+    )
+    parser.add_argument(
+        "--sample-freq",
+        type=str,
+        help="Path to the output file for sample token frequency distribution",
     )
 
     args = parser.parse_args()

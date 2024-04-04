@@ -7,8 +7,9 @@ import argparse
 import glob
 import json
 
-import sentencepiece as spm
+import sentencepiece
 import tiktoken
+import tokengeex
 import tokenizers
 import transformers
 
@@ -53,7 +54,7 @@ if __name__ == "__main__":
         encode_fn = encode_tiktoken
 
     elif args.l == "sentencepiece":
-        sp = spm.SentencePieceProcessor(model_file=args.f)  #  type: ignore
+        sp = sentencepiece.SentencePieceProcessor(model_file=args.f)  #  type: ignore
         vocab_size = sp.vocab_size()
 
         def encode_sentencepiece(text):
@@ -78,6 +79,15 @@ if __name__ == "__main__":
             return tokenizer.encode(text).ids
 
         encode_fn = encode_tokenizers
+
+    elif args.l == "tokengeex":
+        tokenizer = tokengeex.load(args.f)
+        vocab_size = tokenizer.vocab_size()
+
+        def encode_tokengeex(text):
+            return tokenizer.encode(text)
+
+        encode_fn = encode_tokengeex
 
     else:
         raise ValueError(f"Invalid tokenization library: {args.l}")

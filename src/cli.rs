@@ -32,10 +32,10 @@ mod flags {
 
                 // --- Data ---
                 /// List of source files to train the tokenizer on. Must be
-                /// formatted according to {name}:{path}.
+                /// formatted according to {name}:{path}[:proportion].
                 repeated --train input: String
                 /// List of source files to test the tokenizer on. Must be
-                /// formatted according to {name}:{path}.
+                /// formatted according to {name}:{path}[:proportion].
                 repeated --test test: String
 
                 // --- Processing ---
@@ -240,7 +240,7 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper]) -> Vec<Sour
         .maybe_par_iter()
         .map(|source| {
             let pieces = source.split(':').collect::<Vec<&str>>();
-            if pieces.len() != 2 {
+            if pieces.len() < 2 || pieces.len() > 3 {
                 panic!(
                     "Invalid source format: {:?}. Expected to be formatted as {{name}}:{{path}}",
                     source
@@ -248,6 +248,13 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper]) -> Vec<Sour
             }
             let name = pieces[0];
             let filepath = pieces[1];
+            let proportion = pieces.get(2).map(|s| s.parse::<f64>().unwrap_or_else(|_| {
+                panic!(
+                    "Invalid proportion {:?} in source {:?}",
+                    s,
+                    source
+                );
+            })).unwrap_or(1.0);
 
             let file = std::fs::File::open(filepath).unwrap_or_else(|e| {
                 panic!("Failed to open {:?}: {:?}", filepath, e);
@@ -258,7 +265,7 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper]) -> Vec<Sour
                     .unwrap_or_else(|e| panic!("Failed to mmap {:?}: {:?}", filepath, e))
             };
 
-            let samples: Vec<&str> = mmap
+            let mut samples: Vec<&str> = mmap
                 .split(|&b| b == 0x00)
                 .map(|s| {
                     std::str::from_utf8(s).unwrap_or_else(|e| {
@@ -267,9 +274,12 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper]) -> Vec<Sour
                 })
                 .filter(|s| !s.is_empty())
                 .collect();
+            let original_samples_len = samples.len();
+            samples.truncate((samples.len() as f64 * proportion) as usize);
 
             let total_bytes = samples.iter().map(|s| s.len()).sum::<usize>();
             let total_chars = samples.iter().map(|s| s.chars().count()).sum::<usize>();
+
 
             let processed_samples: Vec<String> = samples
                 .iter()
@@ -286,10 +296,13 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper]) -> Vec<Sour
             let processed_total_bytes = processed_samples.iter().map(|s| s.len()).sum::<usize>();
 
             log::info!(
-                "Loaded {:?} source from {:?} ({}). Samples: {} ({}). Processed Samples: {} ({}).",
+                "Loaded {:?} source from {:?} ({}). Proportion: {}/{} ({}%). Samples: {} ({}). Processed Samples: {} ({}).",
                 name,
                 filepath,
                 format_bytes_as_mb(mmap.len() as u64),
+                processed_samples.len(),
+                original_samples_len,
+                (proportion * 100.0) as u64,
                 samples.len(),
                 format_bytes_as_mb(total_bytes as u64),
                 processed_samples.len(),

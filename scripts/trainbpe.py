@@ -57,7 +57,6 @@ def train_sentencepiece(samples: Iterable[str], output: str, vocab_size: int):
         model_type="bpe",
         input_sentence_size=10000000,
         shuffle_input_sentence=True,
-        num_threads=100,
         split_digits=True,
         byte_fallback=True,
         character_coverage=0.999,

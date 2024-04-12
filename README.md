@@ -101,14 +101,14 @@ Here's the full command used to train capcode vocabularies.
 ```shell
 RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --model 'unigram' \
-    --output 'capcode-65k.json' \
-    --logfile 'capcode-65k.log' \
-    --vocab-size 65536 \
+    --output 'capcode-131k-10pct.json' \
+    --logfile 'capcode-131k-10pct.log' \
+    --vocab-size 131072 \
     --processor 'nfc' \
     --processor 'crlf' \
     --processor 'capcode' \
     --initial-vocab-max-token-length 32 \
-    --initial-vocab-size 5000000 \
+    --initial-vocab-size 2000000 \
     --initial-vocab-insert-probability 0.01 \
     --initial-vocab-allow "$(cat data/capcode.regex)" \
     --unigram-shrinking-factor 0.8 \
@@ -116,18 +116,18 @@ RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
     --unigram-sample-regularization 'log' \
     --added-tokens-file './hub/tokens/capcode/added.json' \
     --suggested-tokens-file './hub/tokens/capcode/suggested.json' \
-    $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/capcode/suggested-${lang}.json "; done)
+    $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.1 --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/capcode/suggested-${lang}.json "; done)
 ```
 
 ### Extend with BPE
 
 ```shell
 RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex bpe \
-    --output ./base-131k-extended.json \
+    --output ./base-131k-bpe.json \
     --vocab ./base-131k.json \
     --num-merges 1000 \
     --step 100 \
-    --score-scale-factor 0.85 \
+    --score-scale-factor 0.9 \
     --max-merge-length 16 \
     --ignore '^$' \
     $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin --test ${lang}:./hub/data/test/${lang}.bin "; done)

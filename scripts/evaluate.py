@@ -63,14 +63,14 @@ if __name__ == "__main__":
 
         encode_fn = encode_sentencepiece
 
-    elif args.l == "huggingface":
+    elif args.l == "transformers":
         tokenizer = transformers.AutoTokenizer.from_pretrained(args.f)
         vocab_size = tokenizer.vocab_size
 
-        def encode_huggingface(text):
+        def encode_transformers(text):
             return tokenizer.encode(text, add_special_tokens=False)
 
-        encode_fn = encode_huggingface
+        encode_fn = encode_transformers
 
     elif args.l == "tokenizers":
         tokenizer = tokenizers.Tokenizer.from_file(args.f)

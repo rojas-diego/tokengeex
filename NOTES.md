@@ -3,10 +3,10 @@
 - [x] Data size
   - 100%
   - 10%
-- [x] Multi-word
-- [ ] Idioms
-- [ ] Regualarization
-- [ ] BPE
+- [x] Idioms
+  - [ ]
+- [x] BPE
+  - +0.2 to +0.3 cpt for base 16k, 65k, 131k
 - [x] Added tokens & suggested tokens
 - [x] Initial vocabulary size
 
@@ -17,6 +17,24 @@ python scripts/evaluate.py -f hub/vocab/base-131k-10pct-i500k.json -i './hub/dat
 python scripts/evaluate.py -f hub/vocab/base-16k-10pct-i1M.json -i './hub/data/test/*.bin' -o hub/eval/base-16k-10pct-i1M.log -l tokengeex &
 python scripts/evaluate.py -f hub/vocab/base-65k-10pct-i1M.json -i './hub/data/test/*.bin' -o hub/eval/base-65k-10pct-i1M.log -l tokengeex &
 python scripts/evaluate.py -f hub/vocab/base-131k-10pct-i1M.json -i './hub/data/test/*.bin' -o hub/eval/base-131k-10pct-i1M.log -l tokengeex &
+
+python scripts/evaluate.py -f hub/vocab/base-16k-10pct-bpe.json -i './hub/data/test/*.bin' -o hub/eval/base-16k-10pct-bpe.log -l tokengeex &
+python scripts/evaluate.py -f hub/vocab/base-65k-10pct-bpe.json -i './hub/data/test/*.bin' -o hub/eval/base-65k-10pct-bpe.log -l tokengeex &
+python scripts/evaluate.py -f hub/vocab/base-131k-10pct-bpe.json -i './hub/data/test/*.bin' -o hub/eval/base-131k-10pct-bpe.log -l tokengeex &
+```
+
+```zsh
+for vocab in "base-131k-10pct-i1M" "base-65k-10pct-i1M" "base-16k-10pct-i1M"; do
+  RUST_LOG=info RAYON_NUM_THREADS=120 tokengeex bpe \
+    --output ./${vocab}-bpe.json \
+    --vocab ./${vocab}.json \
+    --num-merges 1000 \
+    --step 100 \
+    --score-scale-factor 0.9 \
+    --max-merge-length 16 \
+    --ignore '^$' \
+    $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.3 --test ${lang}:./hub/data/test/${lang}.bin "; done)
+done
 ```
 
 ```zsh
@@ -50,6 +68,34 @@ for inicfg in "-i500k:500000" "-i1M:1000000"; do
       --suggested-tokens-file "./hub/tokens/base/suggested.json" \
       $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.1 --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/base/suggested-${lang}.json "; done)
   done
+done
+```
+
+```zsh
+for sizecfg in "16k:16384" "65k:65536" "131k:131072"; do
+  IFS=':' read -r -a splits <<< "$sizecfg"
+    sizeext=${splits[0]}
+    size=${splits[1]}
+
+  echo "Training base${sizeext}-10pct.json"
+
+  RUST_LOG=debug RAYON_NUM_THREADS=120 tokengeex train \
+    --model "unigram" \
+    --output "base-${sizeext}-10pct-gpt4.json" \
+    --logfile "base-${sizeext}-10pct-gpt4.log" \
+    --vocab-size ${size} \
+    --processor "nfc" \
+    --processor "crlf" \
+    --initial-vocab-max-token-length 32 \
+    --initial-vocab-size 1000000 \
+    --initial-vocab-insert-probability 0.01 \
+    --initial-vocab-allow "$(cat data/gpt4.regex)" \
+    --unigram-shrinking-factor 0.8 \
+    --unigram-num-sub-iterations 2 \
+    --unigram-sample-regularization "log" \
+    --added-tokens-file "./hub/tokens/base/added.json" \
+    --suggested-tokens-file "./hub/tokens/base/suggested.json" \
+    $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.1 --test ${lang}:./hub/data/test/${lang}.bin --suggested-tokens-file ./hub/tokens/base/suggested-${lang}.json "; done)
 done
 ```
 
@@ -139,6 +185,7 @@ Re-iterate that BPE generates many junk tokens along the way.
   - Allow
 - Merge
   - Train Sources
+    - Per Source?
   - Test Sources
   - Allow
 - Prune

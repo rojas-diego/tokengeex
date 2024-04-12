@@ -104,17 +104,8 @@ impl<'a> LocalTask<'a> {
 // to be idle while others are still working. We also prevent
 // chunks from being too small to avoid too much overhead.
 pub fn par_chunk_size(num_samples: usize, min_chunk_size: usize, f: usize) -> usize {
-    let max_chunk_size = num_samples / current_num_threads() / f;
-    std::cmp::max(
-        1,
-        if max_chunk_size < min_chunk_size {
-            // If we have a small amount of samples, it's better to have
-            // exactly num_threads chunks.
-            ((num_samples as f64) / (current_num_threads() as f64)).ceil() as usize
-        } else {
-            max_chunk_size
-        },
-    )
+    let chunk_size = num_samples / current_num_threads() / f;
+    std::cmp::max(1, std::cmp::max(chunk_size, min_chunk_size))
 }
 
 pub fn mb_per_sec(n: usize, since: std::time::Instant) -> f64 {

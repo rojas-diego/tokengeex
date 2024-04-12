@@ -658,7 +658,7 @@ fn bpe(
     for merges_completed in (0..num_merges).step_by(step) {
         let mut merges = std::cmp::min(step, num_merges - merges_completed);
 
-        let chunk_size = par_chunk_size(samples.len(), current_num_threads() * 128, 10);
+        let chunk_size = par_chunk_size(samples.len(), samples.len() / 8, 4);
         let task = Task::new("BPE Merge", samples.len(), chunk_size);
         let pair_frequencies = RwLock::new(FnvHashMap::<(TokenID, TokenID), usize>::default());
 

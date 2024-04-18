@@ -1,5 +1,3 @@
-use crate::utils::capcode;
-
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
@@ -15,7 +13,6 @@ pub trait Processor {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ProcessorWrapper {
-    Capcode(CapcodeProcessor),
     Crlf(CrlfProcessor),
     Unicode(UnicodeProcessor),
 }
@@ -23,7 +20,6 @@ pub enum ProcessorWrapper {
 impl Processor for ProcessorWrapper {
     fn preprocess(&self, s: &str) -> String {
         match self {
-            ProcessorWrapper::Capcode(processor) => processor.preprocess(s),
             ProcessorWrapper::Crlf(processor) => processor.preprocess(s),
             ProcessorWrapper::Unicode(processor) => processor.preprocess(s),
         }
@@ -31,7 +27,6 @@ impl Processor for ProcessorWrapper {
 
     fn postprocess(&self, s: &str) -> String {
         match self {
-            ProcessorWrapper::Capcode(processor) => processor.postprocess(s),
             ProcessorWrapper::Crlf(processor) => processor.postprocess(s),
             ProcessorWrapper::Unicode(processor) => processor.postprocess(s),
         }
@@ -108,82 +103,6 @@ impl<'de> serde::Deserialize<'de> for CrlfProcessor {
         }
 
         deserializer.deserialize_struct("CrlfProcessor", &["type"], CrlfProcessorVisitor)
-    }
-}
-
-/// Applies the capcode encoding to the input string.
-#[derive(Clone)]
-pub struct CapcodeProcessor;
-
-impl From<CapcodeProcessor> for ProcessorWrapper {
-    fn from(val: CapcodeProcessor) -> Self {
-        ProcessorWrapper::Capcode(val)
-    }
-}
-
-impl Processor for CapcodeProcessor {
-    fn preprocess(&self, s: &str) -> String {
-        capcode::encode(s)
-    }
-
-    fn postprocess(&self, s: &str) -> String {
-        capcode::decode(s)
-    }
-}
-
-impl Serialize for CapcodeProcessor {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut processor = serializer.serialize_struct("CapcodeProcessor", 1)?;
-
-        processor.serialize_field("type", "capcode")?;
-
-        processor.end()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for CapcodeProcessor {
-    fn deserialize<D>(deserializer: D) -> Result<CapcodeProcessor, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct CapcodeProcessorVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for CapcodeProcessorVisitor {
-            type Value = CapcodeProcessor;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct CapcodeProcessor")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<CapcodeProcessor, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                while let Some(key) = map.next_key::<&str>()? {
-                    match key {
-                        "type" => {
-                            let value = map.next_value::<String>()?;
-                            if value != "capcode" {
-                                return Err(serde::de::Error::unknown_variant(
-                                    &value,
-                                    &["capcode"],
-                                ));
-                            }
-                        }
-                        _ => {
-                            let _: serde::de::IgnoredAny = map.next_value()?;
-                        }
-                    }
-                }
-
-                Ok(CapcodeProcessor)
-            }
-        }
-
-        deserializer.deserialize_struct("CapcodeProcessor", &["type"], CapcodeProcessorVisitor)
     }
 }
 

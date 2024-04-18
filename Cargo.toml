@@ -18,7 +18,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "tokengeex"
 path = "src/cli.rs"
-required-features = ["cli"]
 
 [[bench]]
 name = "bench"
@@ -43,10 +42,8 @@ unicode-normalization = "0.1.23"
 regex = "1.10.3"
 dashmap = "5.5.3"
 fnv = "1.0.7"
+fancy-regex = "0.13.0"
 
 [dev-dependencies]
 assert_approx_eq = "1.1"
 criterion = { version = "0.3", features = ["html_reports"] }
-
-[features]
-cli = []

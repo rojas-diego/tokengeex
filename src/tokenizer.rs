@@ -1,67 +1,35 @@
-use std::collections::HashMap;
-
+use crate::{Error, Model, Processor, ProcessorWrapper, Result, ScoredToken, Token, TokenID};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
-
-use crate::{
-    Model, ModelWrapper, Processor, ProcessorWrapper, Result, ScoredToken, Token, TokenID,
-};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Tokenizer {
-    model: ModelWrapper,
+    model: Model,
     processors: Vec<ProcessorWrapper>,
     special_tokens: Vec<String>,
     special_tokens_map: HashMap<String, TokenID>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum TokenizerError {
-    TokenIdOutOfBounds(TokenID),
-    InvalidJSON,
-}
-
-impl std::fmt::Display for TokenizerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            TokenizerError::TokenIdOutOfBounds(id) => {
-                write!(f, "token id {} is out of bounds", id)
-            }
-            TokenizerError::InvalidJSON => {
-                write!(f, "invalid JSON")
-            }
-        }
-    }
-}
-
-impl std::error::Error for TokenizerError {}
-
-impl From<TokenizerError> for Box<dyn std::error::Error + Send> {
-    fn from(err: TokenizerError) -> Self {
-        Box::new(err)
-    }
-}
-
-impl From<serde_json::Error> for TokenizerError {
-    fn from(_: serde_json::Error) -> Self {
-        TokenizerError::InvalidJSON
-    }
-}
-
 impl Tokenizer {
     // Create a new tokenizer with a model and a list of processors.
-    pub fn new<M, I>(model: M, processors: I) -> Self
+    pub fn new<I, J>(model: Model, processors: I, special_tokens: J) -> Self
     where
-        M: Into<ModelWrapper>,
         I: IntoIterator,
         I::Item: Into<ProcessorWrapper>,
+        J: IntoIterator,
+        J::Item: AsRef<str> + ToString,
     {
-        Tokenizer {
-            model: model.into(),
+        let mut tokenizer = Tokenizer {
+            model,
             processors: processors.into_iter().map(|p| p.into()).collect(),
             special_tokens: Vec::new(),
             special_tokens_map: HashMap::new(),
-        }
+        };
+
+        tokenizer.add_special_tokens(special_tokens);
+
+        tokenizer
     }
 
     /// Add special tokens to this tokenizer. Special tokens are encoded before
@@ -180,7 +148,7 @@ impl Tokenizer {
                     let special = self
                         .special_tokens
                         .get((input[idx] - self.model.vocab_size() as TokenID) as usize)
-                        .ok_or(TokenizerError::TokenIdOutOfBounds(input[idx]))?;
+                        .ok_or(Error::TokenIdOutOfBounds(input[idx]))?;
 
                     if include_special_tokens {
                         output.push_str(special);
@@ -259,25 +227,26 @@ impl Tokenizer {
     }
 
     pub fn save(&self, filepath: &str) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let contents = serde_json::to_string(self)?;
+        let contents = serde_json::to_string_pretty(self)?;
         std::fs::write(filepath, contents)?;
         Ok(())
     }
 
-    pub fn model(&self) -> &ModelWrapper {
+    pub fn model(&self) -> &Model {
         &self.model
-    }
-
-    pub fn model_mut(&mut self) -> &mut ModelWrapper {
-        &mut self.model
     }
 
     pub fn processors(&self) -> &Vec<ProcessorWrapper> {
         &self.processors
     }
 
-    pub fn processors_mut(&mut self) -> &mut Vec<ProcessorWrapper> {
-        &mut self.processors
+    pub fn into_inner(self) -> (Model, Vec<ProcessorWrapper>, Vec<String>) {
+        (self.model, self.processors, self.special_tokens)
+    }
+
+    pub fn from_file(filepath: &str) -> Result<Self> {
+        let contents = std::fs::read_to_string(filepath)?;
+        Ok(serde_json::from_str(&contents)?)
     }
 }
 
@@ -285,7 +254,7 @@ impl std::str::FromStr for Tokenizer {
     type Err = crate::Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        serde_json::from_str(s).map_err(|_| TokenizerError::InvalidJSON.into())
+        serde_json::from_str(s).map_err(Error::SerdeJSON)
     }
 }
 
@@ -345,7 +314,7 @@ impl<'a> Iterator for SpecialTokenSplitter<'a> {
     }
 }
 
-static SERIALIZATION_VERSION: &str = "1.0";
+static SERIALIZATION_VERSION: &str = "2.0";
 
 type StdResult<T, E> = std::result::Result<T, E>;
 
@@ -359,7 +328,7 @@ impl Serialize for Tokenizer {
         tokenizer.serialize_field("version", SERIALIZATION_VERSION)?;
         tokenizer.serialize_field("special_tokens", &self.special_tokens)?;
         tokenizer.serialize_field("processors", &self.processors)?;
-        tokenizer.serialize_field("model", &self.model)?;
+        tokenizer.serialize_field("vocab", &self.model.vocab())?;
 
         tokenizer.end()
     }
@@ -372,7 +341,7 @@ impl<'de> Deserialize<'de> for Tokenizer {
     {
         deserializer.deserialize_struct(
             "Tokenizer",
-            &["version", "special_tokens", "processors", "model"],
+            &["version", "special_tokens", "processors", "vocab"],
             TokenizerVisitor,
         )
     }
@@ -392,8 +361,8 @@ impl<'de> Visitor<'de> for TokenizerVisitor {
         A: serde::de::MapAccess<'de>,
     {
         let mut version: Option<String> = None;
-        let mut model: Option<ModelWrapper> = None;
         let mut special_tokens: Vec<&str> = Vec::new();
+        let mut vocab: Vec<ScoredToken> = Vec::new();
         let mut processors: Vec<ProcessorWrapper> = Vec::new();
 
         while let Some(key) = map.next_key()? {
@@ -404,14 +373,17 @@ impl<'de> Visitor<'de> for TokenizerVisitor {
                 "special_tokens" => {
                     special_tokens = map.next_value()?;
                 }
+                "vocab" => {
+                    vocab = map.next_value()?;
+                }
                 "processors" => {
                     processors = map.next_value()?;
                 }
-                "model" => {
-                    model = Some(map.next_value()?);
-                }
                 _ => {
-                    let _: serde::de::IgnoredAny = map.next_value()?;
+                    return Err(serde::de::Error::unknown_field(
+                        key,
+                        &["version", "special_tokens", "processors", "vocab"],
+                    ));
                 }
             }
         }
@@ -424,10 +396,7 @@ impl<'de> Visitor<'de> for TokenizerVisitor {
             )));
         }
 
-        let model = model.ok_or_else(|| serde::de::Error::missing_field("model"))?;
-        let mut tokenizer = Tokenizer::new(model, processors);
-
-        tokenizer.add_special_tokens(special_tokens);
+        let tokenizer = Tokenizer::new(Model::from(vocab), processors, special_tokens);
 
         Ok(tokenizer)
     }

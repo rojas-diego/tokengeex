@@ -1,94 +1,213 @@
-use crate::{unigram, Result, ScoredToken, Token, TokenID};
-use serde::{Deserialize, Serialize};
+// Code imported and modified from: https://github.com/huggingface/tokenizers
+// License: https://github.com/huggingface/tokenizers/blob/4a8105c36671ef46738d6e2799c55198139b87b2/LICENSE
 
-/// A model is a tokenization algorithm that can encode and decode sequences of
-/// characters into sequences of token IDs and vice versa.
-pub trait Model {
-    /// Encode a string into a sequence of token IDs.
+use crate::{lattice::Lattice, trie::Trie, Error, Result, ScoredToken, Token, TokenID};
+use std::collections::HashMap;
+
+#[derive(Clone, Default)]
+pub struct Model {
+    vocab: Vec<ScoredToken>,
+    token_to_ids: HashMap<Token, u32>,
+    trie: Trie<(TokenID, u32)>,
+}
+
+impl Model {
+    /// Create a new `Unigram` model from a vocabulary of scored tokens.
+    pub fn from(vocab: Vec<ScoredToken>) -> Self {
+        let mut token_to_ids: HashMap<Token, u32> = HashMap::new();
+        let mut trie = Trie::default();
+
+        for (id, token) in vocab.iter().enumerate() {
+            token_to_ids.insert(token.value.clone(), id as u32);
+            trie.push(&token.value, (id as u32, token.len() as u32));
+        }
+
+        Self {
+            vocab,
+            token_to_ids,
+            trie,
+        }
+    }
+
+    /// Populates a lattice with all the possible tokenizations of the input
+    /// sentence.
+    pub fn populate_nodes(&self, lattice: &mut Lattice) {
+        let mut buff = Vec::<u8>::with_capacity(256);
+        let input = lattice.sentence;
+
+        for pos in 0..input.len() {
+            let suffix = &input[pos..];
+
+            buff.clear();
+            for (id, len) in self
+                .trie
+                .common_prefix_search(suffix.iter().copied(), &mut buff)
+            {
+                let score = &self.vocab[id as usize].score;
+
+                lattice.insert(pos, id, len as usize, *score);
+            }
+        }
+    }
+
+    /// Encode the input sequence into a sequence of token IDs in O(n) time
+    /// using the SentencePiece DP algorithm.
+    pub fn encode(&self, input: &str) -> Result<Vec<u32>> {
+        let mut buff = Vec::<u8>::with_capacity(256);
+        let input = input.as_bytes();
+
+        #[derive(Clone, Debug)]
+        struct Node {
+            id: u32,
+            score: f64,
+            start: Option<usize>,
+        }
+
+        // For each position i in dp, we store the best tokenization of the
+        // input sequence up to position i.
+        let mut dp = vec![
+            Node {
+                id: 0,
+                score: 0.0,
+                start: None,
+            };
+            input.len() + 1
+        ];
+
+        dp[0].start = Some(0);
+
+        for pos in 0..input.len() {
+            // We skip positions that are unreachable.
+            if dp[pos].start.is_none() {
+                continue;
+            }
+
+            let suffix = &input[pos..];
+
+            buff.clear();
+            for (id, len) in self
+                .trie
+                .common_prefix_search(suffix.iter().copied(), &mut buff)
+            {
+                let len = len as usize;
+                let node = &dp[pos + len];
+                let score = dp[pos].score + self.vocab[id as usize].score;
+
+                if node.start.is_none() || score > node.score {
+                    dp[pos + len] = Node {
+                        id,
+                        score,
+                        start: Some(pos),
+                    };
+                }
+            }
+        }
+
+        // Backtrack along the best path to recover the tokens.
+        let mut pos = input.len();
+        let mut ids: Vec<u32> = Vec::with_capacity(input.len() / 2);
+
+        while pos > 0 {
+            let node = &dp[pos];
+
+            let start = node.start.ok_or_else(|| Error::NoPath(pos, input.len()))?;
+
+            ids.push(node.id);
+            pos = start;
+        }
+
+        // Reverse to maintain original order since we built it backwards.
+        ids.reverse();
+
+        Ok(ids)
+    }
+
+    /// Decode the input sequence of token IDs into a string in O(n) time. If
+    /// the string is not valid UTF-8, it will be returned as a lossy string.
     ///
-    /// # Errors
+    /// # Panics
     ///
-    /// This method can fail if the model is unable to encode the input string
-    /// such as when the input string contains characters that are not in the
-    /// model's vocabulary.
-    fn encode(&self, input: &str) -> Result<Vec<TokenID>>;
+    /// This method will panic if any of the token IDs are out of bounds.
+    pub fn decode(&self, ids: &[u32]) -> Result<String> {
+        let mut res = Vec::new();
 
-    /// Decode a sequence of token IDs into a string.
-    ///
-    /// # Errors
-    ///
-    /// This method can fail if the sequence of token IDs is invalid.
-    fn decode(&self, ids: &[TokenID]) -> Result<String>;
+        for &id in ids {
+            if id >= self.vocab_size() as u32 {
+                return Err(Error::TokenIdOutOfBounds(id));
+            }
 
-    /// Convert a token to its corresponding ID. Returns None if the token is
-    /// not in the vocabulary.
-    fn token_to_id(&self, token: Token) -> Option<TokenID>;
+            let token = &self.vocab[id as usize];
 
-    /// Convert an ID to its corresponding token. Returns None if the ID is not
-    /// in the vocabulary.
-    fn id_to_token(&self, id: TokenID) -> Option<ScoredToken>;
+            res.extend_from_slice(&token.value);
+        }
 
-    /// Get the size of the vocabulary.
-    fn vocab_size(&self) -> usize;
+        Ok(String::from_utf8_lossy(&res).into_owned())
+    }
 
-    /// Get the vocabulary.
-    fn vocab(&self) -> &[ScoredToken];
+    /// Convert a token to a token ID. Currently it is not possible to access
+    /// tokens that are invalid UTF-8 through this method.
+    pub fn token_to_id(&self, token: Token) -> Option<u32> {
+        self.token_to_ids.get(&token).copied()
+    }
+
+    /// Convert a token ID to a token. If the byte sequence is not valid UTF-8
+    /// it will be returned as a lossy string.
+    pub fn id_to_token(&self, id: u32) -> Option<ScoredToken> {
+        if id > self.vocab.len() as u32 {
+            return None;
+        }
+
+        Some(self.vocab[id as usize].clone())
+    }
+
+    /// Number of entries in the vocabulary.
+    pub fn vocab_size(&self) -> usize {
+        self.vocab.len()
+    }
 
     /// Add a token to the vocabulary.
-    fn add_tokens<I>(&mut self, tokens: I)
-    where
-        I: IntoIterator<Item = ScoredToken>;
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ModelWrapper {
-    Unigram(unigram::Unigram),
-}
-
-impl Model for ModelWrapper {
-    fn encode(&self, input: &str) -> Result<Vec<TokenID>> {
-        match self {
-            ModelWrapper::Unigram(model) => model.encode(input),
-        }
-    }
-
-    fn decode(&self, input: &[TokenID]) -> Result<String> {
-        match self {
-            ModelWrapper::Unigram(model) => model.decode(input),
-        }
-    }
-
-    fn token_to_id(&self, token: Token) -> Option<TokenID> {
-        match self {
-            ModelWrapper::Unigram(model) => model.token_to_id(token),
-        }
-    }
-
-    fn id_to_token(&self, id: TokenID) -> Option<ScoredToken> {
-        match self {
-            ModelWrapper::Unigram(model) => model.id_to_token(id),
-        }
-    }
-
-    fn vocab_size(&self) -> usize {
-        match self {
-            ModelWrapper::Unigram(model) => model.vocab_size(),
-        }
-    }
-
-    fn vocab(&self) -> &[ScoredToken] {
-        match self {
-            ModelWrapper::Unigram(model) => model.vocab(),
-        }
-    }
-
-    fn add_tokens<I>(&mut self, tokens: I)
+    pub fn add_tokens<I>(&mut self, tokens: I)
     where
         I: IntoIterator<Item = ScoredToken>,
     {
-        match self {
-            ModelWrapper::Unigram(model) => model.add_tokens(tokens),
+        for token in tokens {
+            let id = self.vocab.len() as u32;
+            self.trie.push(&token.value, (id, token.len() as u32));
+            self.token_to_ids.insert(token.value.clone(), id);
+            self.vocab.push(token);
         }
+    }
+
+    /// Access the vocabulary of the model.
+    pub fn vocab(&self) -> &[ScoredToken] {
+        &self.vocab
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{make_vocab, new_default_vocab};
+
+    use super::*;
+
+    #[test]
+    fn test_encode() {
+        let vocab = make_vocab(&[(b"a", -3.0), (b"b", -3.0), (b"c", -3.0), (b"ab", -4.0)]);
+
+        let model = Model::from(vocab);
+        let ids = model.encode("abc").unwrap();
+        assert_eq!(ids, vec![3, 2]);
+    }
+
+    #[test]
+    fn test_decode_encode_invariants() {
+        let vocab = new_default_vocab();
+        let model = Model::from(vocab);
+        let input = "你好，我叫罗杰斯";
+
+        let ids = model.encode(input).unwrap();
+        assert_eq!(ids.len(), input.len());
+        let decoded = model.decode(&ids).unwrap();
+        assert_eq!(decoded, input);
     }
 }

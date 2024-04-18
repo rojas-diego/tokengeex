@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use pyo3::create_exception;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
@@ -89,7 +91,7 @@ impl PyTokenizer {
         let token = self.tokenizer.id_to_token(id);
 
         if let Some(token) = token {
-            Some((PyBytes::new(py, &token.0).into(), token.1))
+            Some((PyBytes::new(py, &token.value).into(), token.score))
         } else {
             None
         }
@@ -128,6 +130,20 @@ impl PyTokenizer {
         }
     }
 
+    #[staticmethod]
+    fn from_str(_py: Python, json: &str) -> Result<PyTokenizer, PyTokenGeeXError> {
+        tokengeex::Tokenizer::from_str(json)
+            .map(PyTokenizer::from)
+            .map_err(|e| e.into())
+    }
+
+    #[staticmethod]
+    fn from_file(_py: Python, filepath: &str) -> Result<PyTokenizer, PyTokenGeeXError> {
+        tokengeex::Tokenizer::from_file(filepath)
+            .map(PyTokenizer::from)
+            .map_err(|e| e.into())
+    }
+
     #[allow(clippy::inherent_to_string)]
     fn to_string(&self) -> String {
         self.tokenizer.to_string()
@@ -163,19 +179,10 @@ impl PyTokenizer {
     }
 }
 
-#[pyfunction]
-#[pyo3(name = "load")]
-fn tokengeex_load_py(filename: &str) -> Result<PyTokenizer, PyTokenGeeXError> {
-    let tokenizer =
-        tokengeex::load(filename).map_err(std::convert::Into::<PyTokenGeeXError>::into)?;
-    Ok(PyTokenizer::from(tokenizer))
-}
-
 #[pymodule]
 #[pyo3(name = "tokengeex")]
 fn tokengeex_module(_: Python, m: &PyModule) -> PyResult<()> {
     // Module: TokenGeeX
-    m.add_function(wrap_pyfunction!(tokengeex_load_py, m)?)?;
     m.add_class::<PyTokenizer>()?;
 
     Ok(())

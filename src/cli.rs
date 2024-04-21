@@ -79,20 +79,14 @@ mod flags {
                 required -i, --input input: String
                 /// The output tokenizer file.
                 required -o, --output output: String
-
-                // --- Data ---
-                /// List of source files to train the tokenizer on. Must be
-                /// formatted according to {name}:{path}[:proportion].
-                repeated --train input: String
+                /// Do not filter past this vocabulary size. Default is 0.
+                optional -v, --vocab-size vocab_size: usize
 
                 // --- Options ---
                 /// IDs of the tokens to remove.
                 repeated --id id: u32
                 /// Filters tokens with a log probability lower than this value.
-                optional --log-prob log_prob: f64
-                /// Filters tokens with a frequency lower than this value in the
-                /// training data.
-                optional --frequency frequency: usize
+                optional --min-score min_score: f64
                 /// Force. Removes "keep" tokens if they match the filter.
                 optional --force force: bool
             }
@@ -379,15 +373,33 @@ fn prune_cmd(
 
 #[allow(clippy::too_many_arguments)]
 fn filter_cmd(
-    _input: &str,
-    _output: &str,
-    _train: &[String],
-    _ids: &[u32],
-    _log_prob: Option<f64>,
-    _frequency: Option<usize>,
-    _force: bool,
+    input: &str,
+    output: &str,
+    vocab_size: usize,
+    ids: &[u32],
+    min_score: Option<f64>,
+    force: bool,
 ) {
-    todo!("Filtering vocabulary");
+    log::info!(
+        "Filtering vocabulary input={:?} output={:?} vocab_size={} ids={} min_score={:?} force={}",
+        input,
+        output,
+        vocab_size,
+        ids.len(),
+        min_score,
+        force
+    );
+
+    let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
+
+    let vocab_filter = VocabularyFilter::new(vocab_size, ids, min_score, force);
+
+    vocab_filter.filter(&mut model);
+
+    let tokenizer = Tokenizer::new(model, processors, special_tokens);
+    tokenizer.save(output).unwrap();
+
+    log::info!("Saved filtered vocabulary to {:?}", output);
 }
 
 fn main() {
@@ -430,12 +442,10 @@ fn main() {
                 // --- General Purpose ---
                 &flags.input,
                 &flags.output,
-                // --- Data ---
-                &flags.train,
+                flags.vocab_size.unwrap_or(0),
                 // --- Options ---
                 &flags.id,
-                flags.log_prob,
-                flags.frequency,
+                flags.min_score,
                 flags.force.unwrap_or(false),
             )
         }

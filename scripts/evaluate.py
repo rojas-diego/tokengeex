@@ -8,11 +8,6 @@ import glob
 import json
 
 import numpy as np
-import sentencepiece
-import tiktoken
-import tokengeex
-import tokenizers
-import transformers
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -46,6 +41,8 @@ if __name__ == "__main__":
     vocab_size = None
 
     if args.l == "tiktoken":
+        import tiktoken
+
         enc = tiktoken.encoding_for_model(args.f)
         vocab_size = enc.n_vocab
 
@@ -55,6 +52,8 @@ if __name__ == "__main__":
         encode_fn = encode_tiktoken
 
     elif args.l == "sentencepiece":
+        import sentencepiece
+
         sp = sentencepiece.SentencePieceProcessor(model_file=args.f)  #  type: ignore
         vocab_size = sp.vocab_size()
 
@@ -64,6 +63,8 @@ if __name__ == "__main__":
         encode_fn = encode_sentencepiece
 
     elif args.l == "transformers":
+        import transformers
+
         tokenizer = transformers.AutoTokenizer.from_pretrained(args.f)
         vocab_size = tokenizer.vocab_size
 
@@ -73,6 +74,8 @@ if __name__ == "__main__":
         encode_fn = encode_transformers
 
     elif args.l == "tokenizers":
+        import tokenizers
+
         tokenizer = tokenizers.Tokenizer.from_file(args.f)
         vocab_size = tokenizer.get_vocab_size()
 
@@ -82,7 +85,9 @@ if __name__ == "__main__":
         encode_fn = encode_tokenizers
 
     elif args.l == "tokengeex":
-        tokenizer = tokengeex.load(args.f)
+        import tokengeex
+
+        tokenizer = tokengeex.Tokenizer.from_file(args.f)
         vocab_size = tokenizer.vocab_size()
 
         def encode_tokengeex(text):
@@ -96,17 +101,13 @@ if __name__ == "__main__":
     num_buckets = 50
     bucket_size = vocab_size // num_buckets
     out = {
-        "epoch": 0,
-        "split": "test",
         "vocab_size": vocab_size,
         # lang: {num_tokens: int, num_chars: int, chars_per_token: float}
         "compression": {},
         "frequency_buckets": [0] * num_buckets,
-        "sample_frequency_buckets": [0] * num_buckets,
     }
 
     frequency_buckets = np.zeros(vocab_size, dtype=np.int64)
-    sample_frequency_buckets = np.zeros(vocab_size, dtype=np.int64)
 
     for file in glob.glob(args.i):
         filename_base = file.split("/")[-1].split(".")[0]
@@ -122,8 +123,6 @@ if __name__ == "__main__":
 
             for id in tokens:
                 frequency_buckets[id] += 1
-            for id in set(tokens):
-                sample_frequency_buckets[id] += 1
 
         chars_per_token = round(num_chars / num_tokens, 2)
 
@@ -138,18 +137,12 @@ if __name__ == "__main__":
         )
 
     frequency_buckets.sort()
-    sample_frequency_buckets.sort()
     frequency_buckets = frequency_buckets[::-1]
-    sample_frequency_buckets = sample_frequency_buckets[::-1]
 
     for i in range(num_buckets):
         out["frequency_buckets"][i] = np.sum(
             frequency_buckets[i * bucket_size : (i + 1) * bucket_size]
         ).item()
-        out["sample_frequency_buckets"][i] = np.sum(
-            sample_frequency_buckets[i * bucket_size : (i + 1) * bucket_size]
-        ).item()
 
     with open(args.o, "w") as f:
-        json.dump(out, f)
-        f.write("\n")
+        json.dump(out, f, indent=4)

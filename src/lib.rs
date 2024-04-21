@@ -129,15 +129,15 @@ impl<'de> Deserialize<'de> for ScoredToken {
             where
                 V: serde::de::MapAccess<'de>,
             {
-                let mut token: Option<String> = None;
+                let mut value: Option<String> = None;
                 let mut score = None;
                 let mut encoded = false;
                 let mut keep = false;
 
                 while let Some(key) = map.next_key()? {
                     match key {
-                        "token" => {
-                            token = map.next_value()?;
+                        "value" => {
+                            value = map.next_value()?;
                         }
                         "score" => {
                             score = map.next_value()?;
@@ -154,7 +154,7 @@ impl<'de> Deserialize<'de> for ScoredToken {
                     }
                 }
 
-                let token = match token {
+                let value = match value {
                     Some(token) => {
                         if encoded {
                             BASE64_STANDARD
@@ -172,15 +172,11 @@ impl<'de> Deserialize<'de> for ScoredToken {
                     None => return Err(serde::de::Error::missing_field("score")),
                 };
 
-                Ok(ScoredToken {
-                    value: token,
-                    score,
-                    keep,
-                })
+                Ok(ScoredToken { value, score, keep })
             }
         }
 
-        const FIELDS: &[&str] = &["token", "score", "encoded", "keep"];
+        const FIELDS: &[&str] = &["value", "score", "encoded", "keep"];
         deserializer.deserialize_struct("ScoredToken", FIELDS, ScoredTokenVisitor)
     }
 }
@@ -222,7 +218,9 @@ impl std::fmt::Display for Error {
         match self {
             Error::IO(err) => write!(f, "{}", err),
             Error::SerdeJSON(err) => write!(f, "{}", err),
-            Error::NoPath(pos, len) => write!(f, "no path to position {}/{}", pos, len),
+            Error::NoPath(pos, len) => {
+                write!(f, "no path to position {}/{}", pos, len)
+            }
             Error::TokenIdOutOfBounds(id) => write!(f, "token id {} is out of bounds", id),
         }
     }

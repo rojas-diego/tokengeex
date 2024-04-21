@@ -159,26 +159,43 @@ class Tokenizer:
         """
         pass
 
-    def save(self, filename: str) -> None:
+    def save(self, filepath: str) -> None:
         """
         Saves the tokenizer to a file.
 
         Args:
-            filename: The path to the tokenizer file.
+            filepath: The path to the tokenizer file.
         """
         pass
 
-def load(filename: str) -> Tokenizer:
-    """
-    Loads a tokenizer from a file.
+    @staticmethod
+    def from_file(filepath: str) -> Tokenizer:
+        """
+        Loads a tokenizer from a file.
 
-    Args:
-        filename: The path to the tokenizer file.
+        Args:
+            filename: The path to the tokenizer file.
 
-    Returns:
-        The tokenizer.
+        Returns:
+            The tokenizer.
 
-    Exceptions:
-        TokenGeeXError: If the file cannot be loaded or is not a valid tokenizer.
-    """
-    pass
+        Exceptions:
+            TokenGeeXError: If the file cannot be loaded or is not a valid tokenizer.
+        """
+        pass
+
+    @staticmethod
+    def from_str(s: str) -> Tokenizer:
+        """
+        Loads a tokenizer from a string.
+
+        Args:
+            s: The tokenizer string.
+
+        Returns:
+            The tokenizer.
+
+        Exceptions:
+            TokenGeeXError: If the string is not a valid tokenizer.
+        """
+        pass

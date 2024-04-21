@@ -14,32 +14,7 @@ import seaborn as sns
 
 def load_data(args):
     with open(args.i, "r") as f:
-        data = []
-        for line in f:
-            data.append(json.loads(line))
-
-        epochs = {}
-
-        for event in data:
-            event: dict = event
-            epoch, split = event["epoch"], event["split"]
-            if epoch not in epochs:
-                epochs[epoch] = {}
-            if split in epochs[epoch]:
-                raise ValueError(f"Duplicate split {split} in epoch {epoch}")
-            event.pop("epoch")
-            event.pop("split")
-            epochs[epoch][split] = event
-
-    if args.e == "last":
-        epochs_indices = list(map(lambda x: int(x), epochs.keys()))
-        epochs_indices.sort()
-        epoch = epochs[epochs_indices[-1]]
-        print(f"Using epoch {epochs_indices[-1]} of {epochs_indices}")
-    else:
-        epoch = epochs[int(args.e)]
-
-    return epoch[args.s], args.i.split("/")[-1].rsplit(".")[0]
+        return json.load(f), args.i.split("/")[-1].split(".")[0]
 
 
 def plot_cpt(args, data, filename):
@@ -135,11 +110,6 @@ def plot_freq(args, data, filename):
             "Token Frequency Distribution",
             args.freq,
         ),
-        (
-            "sample_frequency_buckets",
-            "Sample Token Frequency Distribution",
-            args.sample_freq,
-        ),
     ]:
         key, title, out = config
 
@@ -193,18 +163,6 @@ if __name__ == "__main__":
         help="Input to the JSONL training/evaluation log file",
     )
     parser.add_argument(
-        "-e",
-        type=str,
-        default="last",
-        help="Which epoch to plot",
-    )
-    parser.add_argument(
-        "-s",
-        type=str,
-        default="test",
-        help="Which split to plot",
-    )
-    parser.add_argument(
         "--cpt",
         type=str,
         help="Path to the output file for characters per token ratio",
@@ -213,11 +171,6 @@ if __name__ == "__main__":
         "--freq",
         type=str,
         help="Path to the output file for token frequency distribution",
-    )
-    parser.add_argument(
-        "--sample-freq",
-        type=str,
-        help="Path to the output file for sample token frequency distribution",
     )
 
     args = parser.parse_args()

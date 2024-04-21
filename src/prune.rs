@@ -125,7 +125,7 @@ impl ModelVocabularyPruner {
         let mut alternative_vocab: Vec<ScoredToken> = Vec::with_capacity(self.vocab_size);
 
         for (freq, token) in expected_frequencies.iter().zip(model.vocab()) {
-            if *freq < EXPECTED_FREQUENCY_THRESHOLD && token.keep {
+            if *freq < EXPECTED_FREQUENCY_THRESHOLD && !token.keep {
                 continue;
             }
 
@@ -167,9 +167,8 @@ impl ModelVocabularyPruner {
 
     /// Prunes the vocabulary by removing the least useful tokens.
     fn prune_vocab(&self, model: &Model, samples: &[&str]) -> Result<Vec<ScoredToken>> {
-        let desired_vocab_size: usize = (self.vocab_size * 11) / 10; // * 1.1
         let pruned_size: usize = ((model.vocab_size() as f64) * self.shrink_factor) as usize;
-        let pruned_size = desired_vocab_size.max(pruned_size);
+        let pruned_size = pruned_size.max(self.vocab_size);
 
         // Segment each token in the vocabulary to understand how it would be
         // resegmented if it was removed from the vocabulary.
@@ -211,7 +210,7 @@ impl ModelVocabularyPruner {
 
                 for sample in chunk {
                     let ids = model.encode(sample).map_err(|err| match err {
-                        tokengeex::Error::NoPath(a, b) => Error::NoPath(a, b),
+                        tokengeex::Error::NoPath(pos, len) => Error::NoPath(pos, len),
                         _ => panic!("unexpected error: {:?}", err),
                     })?;
 
@@ -293,6 +292,22 @@ impl ModelVocabularyPruner {
                 candidates.push((id, loss));
             }
         }
+
+        log::info!(
+            "Pruning vocabulary from={} to={}",
+            model.vocab_size(),
+            pruned_size,
+        );
+
+        candidates.sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
+        for (id, _) in candidates {
+            if pruned_vocab.len() == pruned_size {
+                break;
+            }
+            pruned_vocab.push(model.vocab()[id].clone());
+        }
+
+        pruned_vocab.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
         Ok(pruned_vocab)
     }

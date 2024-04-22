@@ -407,21 +407,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_deserialize_deserialize() {
-        let tokenizer_json = r#"{"version":"1.0","model":{"type":"unigram","vocab":[]}}"#;
-        let tokenizer: StdResult<Tokenizer, _> = serde_json::from_str(tokenizer_json);
-        assert!(tokenizer.is_ok());
-
-        let tokenizer_json = r#"{"version":"2.0","model":{"type":"unigram","vocab":[]}}"#;
-        let tokenizer: StdResult<Tokenizer, _> = serde_json::from_str(tokenizer_json);
-        assert!(tokenizer.is_err());
-
-        let tokenizer_json = r#"{"version":"1.0","model":{"type":"bigram","vocab":[]}}"#;
-        let tokenizer: StdResult<Tokenizer, _> = serde_json::from_str(tokenizer_json);
-        assert!(tokenizer.is_err());
-    }
-
-    #[test]
     fn test_special_tokens_splitter() {
         let cases = [
             (

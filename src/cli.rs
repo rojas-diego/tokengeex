@@ -1,15 +1,17 @@
+use ::regex::Regex;
 use fancy_regex::Regex as FancyRegex;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use regex::Regex;
 use tokengeex::{CrlfProcessor, Model, Processor, ProcessorWrapper, Tokenizer, UnicodeProcessor};
 
 mod filter;
 mod generate;
 mod prune;
+mod regex;
 
 pub use filter::*;
 pub use generate::*;
 pub use prune::*;
+pub use regex::*;
 
 mod flags {
     xflags::xflags! {
@@ -125,6 +127,16 @@ mod flags {
                 required -v, --vocab vocab: String
                 /// Comma separated list of token IDs. Otherwise, stdin is used.
                 optional -i, --input input: String
+            }
+
+            /// Generate a Regex for downstream use with TokenGeeX.
+            cmd regex {
+                /// Output file to save the Regex.
+                required -o, --output output: String
+                /// Comma separated list of idioms to use.
+                repeated -i, --idiom idiom: String
+                /// List of Regex rules to use in addition to the idioms.
+                repeated -r, --rule rule: String
             }
         }
     }
@@ -294,10 +306,24 @@ fn generate_cmd(
 
     let processors = load_processors(processors);
     let train = load_sources(sources, &processors, "train");
-    let split_regex =
-        split.map(|split| FancyRegex::new(std::fs::read_to_string(split).unwrap().trim()).unwrap());
-    let allow_regex =
-        allow.map(|allow| Regex::new(std::fs::read_to_string(allow).unwrap().trim()).unwrap());
+    let split_regex = split.map(|split| {
+        FancyRegex::new(
+            std::fs::read_to_string(split)
+                .unwrap()
+                .replace(['\n', '\r'], "")
+                .trim(),
+        )
+        .unwrap()
+    });
+    let allow_regex = allow.map(|allow| {
+        Regex::new(
+            std::fs::read_to_string(allow)
+                .unwrap()
+                .replace(['\n', '\r'], "")
+                .trim(),
+        )
+        .unwrap()
+    });
 
     log::debug!("Allow regex: {:?}", allow_regex);
     log::debug!("Split regex: {:?}", split_regex);
@@ -354,6 +380,7 @@ fn prune_cmd(
     );
 
     let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
+    let prev_vocab_size = model.vocab_size();
     let train = load_sources(train, &processors, "train");
     let train_samples = train
         .iter()
@@ -364,6 +391,13 @@ fn prune_cmd(
     let vocab_pruner = ModelVocabularyPruner::new(vocab_size, shrink_factor, em_subiters);
 
     vocab_pruner.prune(&mut model, &train_samples).unwrap();
+
+    log::info!(
+        "Pruned vocabulary from={} to={} mem={}",
+        prev_vocab_size,
+        vocab_size,
+        format_bytes_as_mb(model.vocab().iter().map(|token| token.len()).sum::<usize>() as u64)
+    );
 
     let tokenizer = Tokenizer::new(model, processors, special_tokens);
     tokenizer.save(output).unwrap();
@@ -400,6 +434,45 @@ fn filter_cmd(
     tokenizer.save(output).unwrap();
 
     log::info!("Saved filtered vocabulary to {:?}", output);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn regex_cmd(output: &str, idioms: &[String], rules: &[String]) {
+    log::info!(
+        "Generating regex output={:?} idioms={:?} rules={:?}",
+        output,
+        idioms.len(),
+        rules
+    );
+
+    let idioms = idioms
+        .iter()
+        .map(|name| {
+            IDIOMS
+                .iter()
+                .find(|(n, _, _, _)| n == name)
+                .unwrap_or_else(|| panic!("Idiom {:?} not found.", name))
+                .1
+                .to_string()
+        })
+        .collect::<Vec<String>>();
+
+    let rules = idioms
+        .iter()
+        .chain(rules.iter())
+        .map(|rule| {
+            Regex::new(rule)
+                .unwrap_or_else(|e| panic!("Failed to compile regex {:?}: {:?}", rule, e))
+        })
+        .collect::<Vec<Regex>>();
+
+    let regexes = build_allow_regex(rules);
+
+    log::debug!("Generated regex: {:?}", regexes);
+
+    std::fs::write(output, regexes.as_str()).unwrap();
+
+    log::info!("Saved regex to {:?}", output);
 }
 
 fn main() {
@@ -447,6 +520,15 @@ fn main() {
                 &flags.id,
                 flags.min_score,
                 flags.force.unwrap_or(false),
+            )
+        }
+        flags::TokengeexCmd::Regex(flags) => {
+            regex_cmd(
+                // --- General Purpose ---
+                &flags.output,
+                // --- Options ---
+                &flags.idiom,
+                &flags.rule,
             )
         }
         flags::TokengeexCmd::Merge(_) => {

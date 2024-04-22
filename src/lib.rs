@@ -1,7 +1,6 @@
 mod lattice;
 mod model;
 mod processor;
-mod regex;
 mod task;
 mod tokenizer;
 mod trie;
@@ -12,7 +11,6 @@ use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializ
 pub use lattice::*;
 pub use model::*;
 pub use processor::*;
-pub use regex::*;
 pub use task::*;
 pub use tokenizer::*;
 pub use trie::*;

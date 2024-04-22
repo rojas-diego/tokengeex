@@ -5,11 +5,13 @@ use tokengeex::{CrlfProcessor, Model, Processor, ProcessorWrapper, Tokenizer, Un
 
 mod filter;
 mod generate;
+mod merge;
 mod prune;
 mod regex;
 
 pub use filter::*;
 pub use generate::*;
+pub use merge::*;
 pub use prune::*;
 pub use regex::*;
 
@@ -100,15 +102,24 @@ mod flags {
                 /// The output tokenizer file.
                 required -o, --output output: String
 
+                // --- Data ---
+                /// List of source files to train the tokenizer on. Must be
+                /// formatted according to {name}:{path}[:proportion].
+                repeated --train input: String
+
                 // --- Options ---
-                /// The set of rules that define what tokens can be merged.
-                repeated --allow allow: String
+                /// A Regex rule. If specified, only substrings that
+                /// match this regex will be considered to be merged.
+                /// Does not support fancy regex syntax.
+                required --allow allow: String
                 /// The number of merges to perform.
                 optional --num-merges num_merges: usize
-                /// Step size for the BPE merge operations.
+                /// How many new tokens to merge at each iteration.
                 optional --step step: usize
-                /// Score scale factor.
-                optional --score-scale-factor score_scale_factor: f64
+                /// The score of each new token will be caculated based on
+                /// the sum of the scores of the tokens that were merged times
+                /// this factor.
+                optional --scale-factor scale_factor: f64
                 /// Maximum size of a token.
                 optional --max-token-length max_token_length: usize
             }
@@ -482,6 +493,71 @@ fn regex_cmd(output: &str, idioms: &[String], rules: &[String]) {
     log::info!("Saved regex to {:?}", output);
 }
 
+#[allow(clippy::too_many_arguments)]
+fn merge_cmd(
+    input: &str,
+    output: &str,
+    train: &[String],
+    allow: &str,
+    num_merges: usize,
+    step: usize,
+    scale_factor: f64,
+    max_token_length: usize,
+) {
+    assert!(
+        !train.is_empty(),
+        "At least one train source must be provided."
+    );
+
+    log::info!(
+        "Merging vocabulary input={:?} output={:?} num_merges={} step={} scale_factor={} max_token_length={}",
+        input,
+        output,
+        num_merges,
+        step,
+        scale_factor,
+        max_token_length
+    );
+
+    let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
+    let train = load_sources(train, &processors, "train");
+    let train_samples = train
+        .iter()
+        .flat_map(|source| source.processed_samples.iter())
+        .map(|s| s.as_str())
+        .collect::<Vec<&str>>();
+    let prev_vocab_size = model.vocab_size();
+    let allow_regex = Regex::new(
+        std::fs::read_to_string(allow)
+            .unwrap()
+            .replace(['\n', '\r'], "")
+            .trim(),
+    )
+    .unwrap();
+
+    let vocab_merger = ModelVocabularyMerger::new(
+        allow_regex,
+        num_merges,
+        step,
+        scale_factor,
+        max_token_length,
+    );
+
+    vocab_merger.merge(&mut model, &train_samples);
+
+    log::info!(
+        "Merged vocabulary from={} to={} mem={}",
+        prev_vocab_size,
+        model.vocab_size(),
+        format_bytes_as_mb(model.vocab().iter().map(|token| token.len()).sum::<usize>() as u64)
+    );
+
+    let tokenizer = Tokenizer::new(model, processors, special_tokens);
+    tokenizer.save(output).unwrap();
+
+    log::info!("Saved merged vocabulary to {:?}", output);
+}
+
 fn main() {
     env_logger::Builder::from_default_env().init();
 
@@ -538,8 +614,20 @@ fn main() {
                 &flags.rule,
             )
         }
-        flags::TokengeexCmd::Merge(_) => {
-            todo!();
+        flags::TokengeexCmd::Merge(flags) => {
+            merge_cmd(
+                // --- General Purpose ---
+                &flags.input,
+                &flags.output,
+                // --- Data ---
+                &flags.train,
+                // --- Options ---
+                &flags.allow,
+                flags.num_merges.unwrap_or(1000),
+                flags.step.unwrap_or(50),
+                flags.scale_factor.unwrap_or(0.9),
+                flags.max_token_length.unwrap_or(24),
+            )
         }
         flags::TokengeexCmd::Encode(_) => {
             todo!();

@@ -23,7 +23,7 @@ pub type TokenID = u32;
 pub type Token = Vec<u8>;
 
 /// A token and its score.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ScoredToken {
     pub value: Token,
     pub score: f64,
@@ -73,6 +73,30 @@ impl ScoredToken {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl std::fmt::Debug for ScoredToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if let Ok(s) = std::str::from_utf8(&self.value) {
+            write!(f, "ScoredToken({:?}, {}, {})", s, self.score, self.keep)
+        } else {
+            write!(
+                f,
+                "ScoredToken({:?}, {}, keep={})",
+                &self.value, self.score, self.keep
+            )
+        }
+    }
+}
+
+impl std::fmt::Display for ScoredToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if let Ok(s) = std::str::from_utf8(&self.value) {
+            write!(f, "{:?}", s)
+        } else {
+            write!(f, "{:?}", &self.value)
+        }
     }
 }
 

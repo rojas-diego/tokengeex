@@ -170,11 +170,29 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
         &["/home/user", "/var/log"],
         &[],
     ),
-    // Whitespace
+    // Punct & Whitespace
     (
         "whitespace",
         r#"\s+"#,
         &[" ", "  ", "    ", "\n", "\n\n", "\t\t", " \n\t"],
+        &[],
+    ),
+    (
+        "punct",
+        r#"[[:punct:]]+"#,
+        &["####", "()[]{}"],
+        &["\n#\n#\n#"],
+    ),
+    (
+        "punct-space",
+        r#"(?: |[[:punct:]])+"#,
+        &[" # ", " ( ", " ) ", " { ", " } "],
+        &[],
+    ),
+    (
+        "punct-newline-indent",
+        r#"(?:[[:punct:]]|\n)[ \t]+"#,
+        &[");\n\t\t", "]\n    "],
         &[],
     ),
     // C/C++

@@ -28,6 +28,8 @@ RUST_LOG=debug tokengeex regex --output data/tokengeex.regex \
     -i filename \
     -i path \
     -i whitespace \
+    -i punct-space \
+    -i punct-newline-indent \
     -i cpp-pointer \
     -i cpp-namespace-prefix \
     -i cpp-namespace-suffix \

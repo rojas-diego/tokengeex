@@ -7,7 +7,7 @@ import tokengeex
 
 # Scan for vocabularies
 vocabs = []
-for file in glob.glob("./hub/vocab/*.json"):
+for file in glob.glob("./hub/vocab/v2/*.json"):
     if os.path.isfile(file):
         vocabs.append(file.split("/")[-1])
 
@@ -117,7 +117,7 @@ with gr.Blocks() as demo:
                     buff += read
                 input = buff.decode("utf-8", errors="ignore")
 
-        tokenizer = tokengeex.load(f"./hub/vocab/{vocab}")
+        tokenizer = tokengeex.Tokenizer.from_file(f"./hub/vocab/v2/{vocab}")
         ids = tokenizer.encode(input)
         tokens = [(id, tokenizer.id_to_token(id)) for id in ids]  # type: ignore
         tokens = list(filter(lambda token: token[1] is not None, tokens))

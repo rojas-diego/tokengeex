@@ -430,6 +430,13 @@ fn filter_cmd(
 
     vocab_filter.filter(&mut model);
 
+    log::debug!(
+        "Filtered vocabulary from={} to={} mem={}",
+        model.vocab_size(),
+        vocab_size,
+        format_bytes_as_mb(model.vocab().iter().map(|token| token.len()).sum::<usize>() as u64)
+    );
+
     let tokenizer = Tokenizer::new(model, processors, special_tokens);
     tokenizer.save(output).unwrap();
 

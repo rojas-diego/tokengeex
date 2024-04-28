@@ -182,6 +182,13 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
         &["[1", "[123", "[789"],
         &["[1000"],
     ),
+    // Snake Case
+    (
+        "snake-case",
+        r#" ?[a-zA-Z]+(?:_[a-zA-Z]+)+"#,
+        &["hello_world", "many_SUCH_words"],
+        &["HelloWorld", "manySuchWords"],
+    ),
     // URL
     (
         "scheme",

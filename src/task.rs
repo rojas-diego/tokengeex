@@ -81,9 +81,9 @@ impl Task {
                     "{} | {:>6.2}% | ETA {:>5}s | {:>5.2}MB/s | {:>5.2}MB/s per thread",
                     task.desc,
                     percent_done,
+                    eta.round(),
                     mb_per_sec(num_bytes_processed, task.start),
                     mb_per_sec(num_bytes_processed, task.start) / current_num_threads() as f64,
-                    eta.round(),
                 );
             }
 

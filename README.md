@@ -4,19 +4,13 @@ This repository holds the code for the TokenGeeX Rust crate and Python package. 
 
 ## CLI
 
-### Regex
-
-```bash
-RUST_LOG=debug tokengeex regex --output data/exact.regex \
-    # Place the idioms and regexes here.
-```
-
 #### Exact
 
 The most restrictive pattern. Does not allow punctuation to be mixed in with words and strictly adheres to code structure. Does not allow words that mix casing. Digits are encoded as a single token.
 
 ```bash
-$(for idiom in any-char lowercase-word uppercase-word capitalized-word english-contraction chinese-word indent few-repeated-punct-space; do echo "-i ${idiom} "; done)
+RUST_LOG=debug tokengeex regex --output data/exact.regex \
+    $(for idiom in any-char lowercase-word uppercase-word capitalized-word english-contraction chinese-word indent few-repeated-punct-space; do echo "-i ${idiom} "; done)
 ```
 
 #### General
@@ -24,10 +18,11 @@ $(for idiom in any-char lowercase-word uppercase-word capitalized-word english-c
 General-purpose pattern which is loosely analogous to GPT-4's pattern. Numbers of up to three digits are allowed.
 
 ```bash
-$(for idiom in any-char word english-word french-word chinese-word english-contraction short-number punct-word scheme newline-indent repeated-punct-space; do echo "-i ${idiom} "; done)
+RUST_LOG=debug tokengeex regex --output data/general.regex \
+    $(for idiom in any-char word english-word french-word chinese-word english-contraction short-number punct-word newline-indent repeated-punct-space; do echo "-i ${idiom} "; done)
 ```
 
-#### Broad
+#### Idiomatic
 
 Permissive pattern which allows some common idioms to form. Allows multi-word tokens to form.
 

@@ -61,9 +61,11 @@ impl ModelVocabularyPruner {
     /// of each segmentation.
     fn run_e_step(&self, model: &Model, samples: &[&str]) -> Vec<f64> {
         let acc_expected_frequencies = RwLock::new(vec![0.0; model.vocab_size()]);
-        let chunk_size = par_chunk_size(samples.len(), 1024, 10);
+        let chunk_size = par_chunk_size(samples.len(), 8);
 
         let task = Task::new("E-step", samples.len(), chunk_size);
+
+        task.start();
 
         samples.par_chunks(chunk_size).for_each(|chunk| {
             // For each sample, we iterate over snippets of max
@@ -199,8 +201,10 @@ impl ModelVocabularyPruner {
         }
 
         let acc_frequencies = RwLock::new(vec![0usize; model.vocab_size()]);
-        let chunk_size = par_chunk_size(samples.len(), 1024, 4);
+        let chunk_size = par_chunk_size(samples.len(), 2);
         let task = Task::new("Computing frequencies", samples.len(), chunk_size);
+
+        task.start();
 
         samples
             .par_chunks(chunk_size)

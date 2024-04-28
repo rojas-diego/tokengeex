@@ -1,7 +1,7 @@
 use std::sync::RwLock;
 
 use fnv::{FnvHashMap, FnvHashSet};
-use rayon::{current_num_threads, iter::ParallelIterator, slice::ParallelSlice};
+use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 use regex::Regex;
 use tokengeex::{par_chunk_size, Model, ScoredToken, Task, TokenID};
 
@@ -36,7 +36,7 @@ impl ModelVocabularyMerger {
         let start_vocab_size = model.vocab_size();
 
         while model.vocab_size() < start_vocab_size + self.num_merges {
-            let chunk_size = par_chunk_size(samples.len(), current_num_threads() * 64, 2);
+            let chunk_size = par_chunk_size(samples.len(), 4);
             let pair_frequencies = RwLock::new(FnvHashMap::<(TokenID, TokenID), usize>::default());
             let task = Task::new(
                 &format!(
@@ -47,6 +47,8 @@ impl ModelVocabularyMerger {
                 samples.len(),
                 chunk_size,
             );
+
+            task.start();
 
             samples.par_chunks(chunk_size).for_each(|chunk| {
                 let mut ltask = task.local(chunk.len());

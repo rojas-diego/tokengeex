@@ -50,7 +50,7 @@ impl Task {
         }
     }
 
-    pub fn start(&mut self) {
+    pub fn start(&self) {
         let task = self.inner.clone();
 
         std::thread::spawn(move || loop {
@@ -118,9 +118,9 @@ impl LocalTask {
 // per-thread workload because too large chunks can cause some threads
 // to be idle while others are still working. We also prevent
 // chunks from being too small to avoid too much overhead.
-pub fn par_chunk_size(num_samples: usize, min_chunk_size: usize, f: usize) -> usize {
+pub fn par_chunk_size(num_samples: usize, f: usize) -> usize {
     let chunk_size = num_samples / current_num_threads() / f;
-    std::cmp::max(1, std::cmp::max(chunk_size, min_chunk_size))
+    std::cmp::max(1, chunk_size)
 }
 
 pub fn mb_per_sec(n: usize, since: std::time::Instant) -> f64 {

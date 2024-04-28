@@ -21,7 +21,7 @@ $(for idiom in any-char lowercase-word uppercase-word capitalized-word english-c
 
 #### General
 
-General-purpose pattern which is loosely analogous to GPT-4's pattern.
+General-purpose pattern which is loosely analogous to GPT-4's pattern. Numbers of up to three digits are allowed.
 
 ```bash
 TODO!

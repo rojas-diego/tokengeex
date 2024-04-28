@@ -1,5 +1,6 @@
 use ::regex::Regex;
 use fancy_regex::Regex as FancyRegex;
+use rand::prelude::SliceRandom;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tokengeex::{CrlfProcessor, Model, Processor, ProcessorWrapper, Tokenizer, UnicodeProcessor};
 
@@ -393,11 +394,13 @@ fn prune_cmd(
     let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
     let prev_vocab_size = model.vocab_size();
     let train = load_sources(train, &processors, "train");
-    let train_samples = train
+    let mut train_samples = train
         .iter()
         .flat_map(|source| source.processed_samples.iter())
         .map(|s| s.as_str())
         .collect::<Vec<&str>>();
+    let mut rng = rand::thread_rng();
+    train_samples.shuffle(&mut rng);
 
     let vocab_pruner = ModelVocabularyPruner::new(vocab_size, shrink_factor, em_subiters);
 
@@ -521,11 +524,13 @@ fn merge_cmd(
 
     let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
     let train = load_sources(train, &processors, "train");
-    let train_samples = train
+    let mut train_samples = train
         .iter()
         .flat_map(|source| source.processed_samples.iter())
         .map(|s| s.as_str())
         .collect::<Vec<&str>>();
+    let mut rng = rand::thread_rng();
+    train_samples.shuffle(&mut rng);
     let prev_vocab_size = model.vocab_size();
     let allow_regex = Regex::new(
         std::fs::read_to_string(allow)

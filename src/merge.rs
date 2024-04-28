@@ -122,7 +122,7 @@ impl ModelVocabularyMerger {
 
                 merges -= 1;
 
-                log::info!("Merged a={} b={} freq={} into={:?}", a, b, freq, token);
+                log::info!("Merged a={} b={} freq={} into={}", a, b, freq, token);
             }
 
             if merges == self.step {

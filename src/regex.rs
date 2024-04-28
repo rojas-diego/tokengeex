@@ -76,7 +76,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
         "multi-uppercase-word",
         r#" ?[A-Z]+(?: [A-Z]+)+"#,
         &["HELLO WORLD", " HELLO WORLD"],
-        &["Hello World", "HELLO WORLD"],
+        &["Hello World", "hello world"],
     ),
     (
         "multi-capitalized-word",
@@ -223,7 +223,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     (
         "newline-indent",
-        r#"\n(?:[ ]+)|[\t]+)"#,
+        r#"\n[ ]+|[\t]+"#,
         &["\n ", "\n  ", "\n    ", "\n\t", "\n\t\t", "\n\t\t\t"],
         &["\n\t "],
     ),
@@ -242,9 +242,9 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     (
         "few-repeated-punct",
-        r#"[[:punct:]]{1,3}"#,
+        r#"[[:punct:]]{1,4}"#,
         &["#", "##", "###", "()", "[]", "{}"],
-        &["####", "()[]{}", "####"],
+        &["#####", "()[]{}"],
     ),
     (
         "repeated-punct-space",
@@ -254,7 +254,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     (
         "few-repeated-punct-space",
-        r#"(?: |[[:punct:]]){1,3}"#,
+        r#"(?: |[[:punct:]]){1,4}"#,
         &[" # ", " ( ", " ) ", " { ", " } ", " != ", ", "],
         &[],
     ),
@@ -305,7 +305,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     // Go
     (
         "go-slice-primitive",
-        r#" \[\]?(?:bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|uintptr|float32|float64|string)"#,
+        r#" ?\[\]?(?:bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|uintptr|float32|float64|string)"#,
         &["[]string", " []int"],
         &[],
     ),

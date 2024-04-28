@@ -24,7 +24,7 @@ $(for idiom in any-char lowercase-word uppercase-word capitalized-word english-c
 General-purpose pattern which is loosely analogous to GPT-4's pattern. Numbers of up to three digits are allowed.
 
 ```bash
-$(for idiom in any-char ch; do echo "-i ${idiom} "; done)
+$(for idiom in any-char word english-word french-word chinese-word english-contraction short-number punct-word scheme newline-indent repeated-punct-space; do echo "-i ${idiom} "; done)
 ```
 
 #### Broad

@@ -53,35 +53,48 @@ impl Task {
     pub fn start(&self) {
         let task = self.inner.clone();
 
-        std::thread::spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
 
-            if task.finished.load(Relaxed) {
-                break;
+                if task.finished.load(Relaxed) {
+                    break;
+                }
+
+                let num_samples_processed = task.num_samples_processed.load(Relaxed);
+                let num_bytes_processed = task.num_bytes_processed.load(Relaxed);
+
+                if num_samples_processed >= task.num_samples {
+                    break;
+                }
+
+                let percent_done = (num_samples_processed as f64 / task.num_samples as f64) * 100.0;
+
+                if percent_done == 0.0 {
+                    continue;
+                }
+
+                let eta =
+                    (task.start.elapsed().as_secs_f64() / percent_done) * (100.0 - percent_done);
+
+                log::debug!(
+                    "{} | {:>6.2}% | ETA {:>5}s | {:>5.2}MB/s | {:>5.2}MB/s per thread",
+                    task.desc,
+                    percent_done,
+                    mb_per_sec(num_bytes_processed, task.start),
+                    mb_per_sec(num_bytes_processed, task.start) / current_num_threads() as f64,
+                    eta.round(),
+                );
             }
 
-            let num_samples_processed = task.num_samples_processed.load(Relaxed);
             let num_bytes_processed = task.num_bytes_processed.load(Relaxed);
 
-            if num_samples_processed >= task.num_samples {
-                break;
-            }
-
-            let percent_done = (num_samples_processed as f64 / task.num_samples as f64) * 100.0;
-
-            if percent_done == 0.0 {
-                continue;
-            }
-
-            let eta = (task.start.elapsed().as_secs_f64() / percent_done) * (100.0 - percent_done);
-
             log::info!(
-                "{} | {}/{} samples | {:.2}MB/s | ETA {:.0}s",
+                "FINISHED {} | {} samples | {:.2}MB/s | {:.2}s",
                 task.desc,
-                num_samples_processed,
                 task.num_samples,
                 mb_per_sec(num_bytes_processed, task.start),
-                eta.round(),
+                task.start.elapsed().as_secs_f64(),
             );
         });
     }

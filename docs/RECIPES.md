@@ -30,7 +30,6 @@ RUST_LOG=debug tokengeex prune --input 'hub/vocab/v2/exact-500k-init.json' \
 
 ## `exact-30k-filtered`
 
-
 ```bash
 RUST_LOG=debug tokengeex filter --input 'hub/vocab/v2/exact-32k-pruned.json' \
     --output 'hub/vocab/v2/exact-30k-filtered.json' \

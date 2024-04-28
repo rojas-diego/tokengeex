@@ -46,6 +46,50 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
         &["你好", "大家好"],
         &["مرحبا"],
     ),
+    // Words Space
+    (
+        "lowercase-word-space",
+        r#" ?[a-z]+ ?"#,
+        &["hello ", " world "],
+        &["Hello", "HELLO"],
+    ),
+    (
+        "uppercase-word-space",
+        r#" ?[A-Z]+ ?"#,
+        &["HELLO ", " WORLD "],
+        &["Hello", " WoRLD"],
+    ),
+    (
+        "word-space",
+        r#" ?[A-Za-z]+ ?"#,
+        &["hello ", " Hello ", " HeLlO "],
+        &["123"],
+    ),
+    // Multiple Words
+    (
+        "multi-lowercase-word",
+        r#" ?[a-z]+(?: [a-z]+)+"#,
+        &["hello world", " hello world"],
+        &["Hello World", "HELLO WORLD"],
+    ),
+    (
+        "multi-uppercase-word",
+        r#" ?[A-Z]+(?: [A-Z]+)+"#,
+        &["HELLO WORLD", " HELLO WORLD"],
+        &["Hello World", "HELLO WORLD"],
+    ),
+    (
+        "multi-capitalized-word",
+        r#" ?[A-Z][a-z]+(?: [A-Z][a-z]+)+"#,
+        &[" Hello World", "Hello World"],
+        &["HeLlO WoRLD"],
+    ),
+    (
+        "multi-word",
+        r#" ?[A-Za-z]+(?: [A-Za-z]+)+"#,
+        &["hello world", " Hello World", " HeLlO WoRLD"],
+        &["123"],
+    ),
     // Grammar
     (
         "english-contraction",
@@ -170,27 +214,58 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
         &["/home/user", "/var/log"],
         &[],
     ),
-    // Punct & Whitespace
+    // Whitespace
+    (
+        "indent",
+        r#"(?:[ ]+)|[\t]+)"#,
+        &[" ", "  ", "    ", "\t", "\t\t", "\t\t\t"],
+        &["\t "],
+    ),
+    (
+        "newline-indent",
+        r#"\n(?:[ ]+)|[\t]+)"#,
+        &["\n ", "\n  ", "\n    ", "\n\t", "\n\t\t", "\n\t\t\t"],
+        &["\n\t "],
+    ),
     (
         "whitespace",
         r#"\s+"#,
         &[" ", "  ", "    ", "\n", "\n\n", "\t\t", " \n\t"],
         &[],
     ),
+    // Punctuation
     (
-        "punct",
+        "repeated-punct",
         r#"[[:punct:]]+"#,
         &["####", "()[]{}"],
         &["\n#\n#\n#"],
     ),
     (
-        "punct-space",
+        "few-repeated-punct",
+        r#"[[:punct:]]{1,3}"#,
+        &["#", "##", "###", "()", "[]", "{}"],
+        &["####", "()[]{}", "####"],
+    ),
+    (
+        "repeated-punct-space",
         r#"(?: |[[:punct:]])+"#,
         &[" # ", " ( ", " ) ", " { ", " } ", " != ", ", "],
         &[],
     ),
     (
-        "punct-newline-indent",
+        "few-repeated-punct-space",
+        r#"(?: |[[:punct:]]){1,3}"#,
+        &[" # ", " ( ", " ) ", " { ", " } ", " != ", ", "],
+        &[],
+    ),
+    (
+        "punct-newline",
+        r#"[[:punct:]]+\n"#,
+        &[";\n", "]\n", "}\n"],
+        &[";\n\n", "]\n\n", "}\n\n"],
+    ),
+    (
+        "repeated-punct-newline-indent",
         r#"[[:punct:]]+\n[ \t]+"#,
         &[");\n\t\t", "]\n    "],
         &[],
@@ -216,7 +291,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     (
         "cpp-keywords",
-        r#"(?:auto|char|const|double|float|int|long|short|signed|unsigned|void|volatile) "#,
+        r#" ?(?:auto|char|const|double|float|int|long|short|signed|unsigned|void|volatile) ?"#,
         &["auto ", "char "],
         &[],
     ),
@@ -230,8 +305,8 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     // Go
     (
         "go-slice-primitive",
-        r#" ?(?:bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|uintptr|float32|float64|string)\[\]"#,
-        &["string[]", " int[]"],
+        r#" \[\]?(?:bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|uintptr|float32|float64|string)"#,
+        &["[]string", " []int"],
         &[],
     ),
     (
@@ -248,7 +323,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     (
         "go-keywords",
-        r#"(?:var|go|if|for|package|range|return|struct|type) "#,
+        r#" ?(?:var|go|if|for|package|range|return|struct|type) ?"#,
         &["var ", "go "],
         &[],
     ),
@@ -261,35 +336,35 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     (
         "python-keywords",
-        r#"(?:and|as|assert|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield) "#,
+        r#" ?(?:and|as|assert|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield) ?"#,
         &["def ", "yield "],
         &[],
     ),
     // Rust
     (
         "rust-keywords",
-        r#"(?:as|async|await|break|const|continue|crate|dyn|else|enum|extern|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|type|unsafe|use|where|while) "#,
+        r#" ?(?:as|async|await|break|const|continue|crate|dyn|else|enum|extern|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|type|unsafe|use|where|while) ?"#,
         &["fn ", "use "],
         &[],
     ),
     // Java
     (
         "java-keywords",
-        r#"(?:abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while) "#,
+        r#" ?(?:abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while) ?"#,
         &["class ", "void "],
         &[],
     ),
     // JavaScript
     (
         "js-keywords",
-        r#"(?:break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|with|yield) "#,
+        r#" ?(?:break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|with|yield) ?"#,
         &["class ", "yield "],
         &[],
     ),
     // TypeScript
     (
         "ts-keywords",
-        r#"(?:abstract|as|break|case|catch|class|continue|const|constructor|debugger|declare|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|infer|instanceof|interface|is|keyof|let|module|namespace|never|null|package|private|protected|public|readonly|require|global|return|set|static|string|super|switch|symbol|this|throw|true|try|type|typeof|undefined|var|void|while|with|yield) "#,
+        r#" ?(?:abstract|as|break|case|catch|class|continue|const|constructor|debugger|declare|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|infer|instanceof|interface|is|keyof|let|module|namespace|never|null|package|private|protected|public|readonly|require|global|return|set|static|string|super|switch|symbol|this|throw|true|try|type|typeof|undefined|var|void|while|with|yield) ?"#,
         &["class ", "yield "],
         &[],
     ),
@@ -300,7 +375,6 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
         &["<div>", "<span", "<div "],
         &["<DIV>", "<SPAN>"],
     ),
-    // CSS
 ];
 
 pub fn build_allow_regex<I>(regexes: I) -> Regex

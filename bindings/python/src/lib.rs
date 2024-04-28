@@ -130,6 +130,19 @@ impl PyTokenizer {
         }
     }
 
+    fn common_prefix_search(&self, text: &str) -> Vec<TokenID> {
+        let mut buffer = Vec::with_capacity(256);
+
+        let values: Vec<TokenID> = self
+            .tokenizer
+            .model()
+            .common_prefix_search(text.as_bytes(), &mut buffer)
+            .map(|(id, _)| id)
+            .collect();
+
+        values
+    }
+
     #[staticmethod]
     fn from_str(_py: Python, json: &str) -> Result<PyTokenizer, PyTokenGeeXError> {
         tokengeex::Tokenizer::from_str(json)

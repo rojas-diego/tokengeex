@@ -1,6 +1,6 @@
-import tokengeex
+from tokengeex import Tokenizer
 
-tokenizer = tokengeex.load("./hub/vocab/capcode-65k.json")
+tokenizer = Tokenizer.from_file("./hub/vocab/v2/51k.json")
 
 sentence = "Hello, world!"
 
@@ -13,7 +13,7 @@ decoded = tokenizer.decode(ids, include_special_tokens=False)
 print(decoded)
 
 # Vocabulary
-id = tokenizer.token_to_id(b"DC hello")
+id = tokenizer.token_to_id(b"Hello")
 assert id is not None
 print(id)
 
@@ -63,6 +63,10 @@ print(decoded)
 
 ids = tokenizer.encode_ordinary_batch(sentences)
 print(ids)
+
+# Common prefix search
+suffixes = tokenizer.common_prefix_search("self.dropout")
+print([tokenizer.id_to_token(id) for id in suffixes])
 
 # Save
 tokenizer.save("/dev/null")

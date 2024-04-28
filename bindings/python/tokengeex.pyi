@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 class TokenGeeXError(Exception):
     """
@@ -165,6 +165,18 @@ class Tokenizer:
 
         Args:
             filepath: The path to the tokenizer file.
+        """
+        pass
+
+    def common_prefix_search(self, text: str) -> Iterable[int]:
+        """
+        Iterates over all tokens that are prefixes of `text`.
+
+        Args:
+            text: The input string.
+
+        Returns:
+            A list of token IDs.
         """
         pass
 

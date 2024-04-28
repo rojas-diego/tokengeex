@@ -122,6 +122,15 @@ impl Model {
         Ok(ids)
     }
 
+    /// Efficiently search for any token that is a prefix of `s`.
+    pub fn common_prefix_search<'a>(
+        &'a self,
+        s: &'a [u8],
+        buffer: &'a mut Vec<u8>,
+    ) -> impl Iterator<Item = (TokenID, u32)> + 'a {
+        self.trie.common_prefix_search(s.iter().copied(), buffer)
+    }
+
     /// Decode the input sequence of token IDs into a string in O(n) time. If
     /// the string is not valid UTF-8, it will be returned as a lossy string.
     ///

@@ -4,49 +4,6 @@ This repository holds the code for the TokenGeeX Rust crate and Python package. 
 
 ## CLI
 
-### Regex
-
-```bash
-RUST_LOG=debug tokengeex regex --output data/init.regex \
-    -i word \
-    -i english-word \
-    -i french-word \
-    -i chinese-word \
-    -i english-contraction \
-    -i space-digit \
-    -i short-number \
-    -i word-wrapped-in-brackets \
-    -i short-number-wrapped-in-brackets \
-    -i word-wrapped-in-quotes \
-    -i word-wrapped-in-angle-brackets \
-    -i punct-word \
-    -i space-punct-word \
-    -i dot-short-number \
-    -i scheme \
-    -i port \
-    -i subdomains \
-    -i filename \
-    -i path \
-    -i whitespace \
-    -i punct-space \
-    -i punct-newline-indent \
-    -i cpp-pointer \
-    -i cpp-namespace-prefix \
-    -i cpp-namespace-suffix \
-    -i cpp-preprocessor \
-    -i cpp-include \
-    -i go-slice-primitive \
-    -i go-map-prefix-primitive \
-    -i go-func \
-    -i go-keywords \
-    -i dunder \
-    -i python-keywords \
-    -i rust-keywords \
-    -i js-keywords \
-    -i ts-keywords \
-    -i html-tag
-```
-
 ### Generate
 
 ```bash
@@ -94,5 +51,39 @@ RUST_LOG=debug tokengeex merge --input 'hub/vocab/v2/50k-filtered.json' \
     --step 10 \
     --scale-factor 0.9 \
     --max-token-length 24 \
-    $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.01 "; done)
+    $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.1 "; done)
+```
+
+### Regex
+
+#### Exact
+
+The most restrictive pattern. Does not allow punctuation to be mixed in with words and strictly adheres to code structure. Does not allow words that mix casing. Digits are encoded as a single token.
+
+```bash
+$(for idiom in any-char lowercase-word uppercase-word capitalized-word english-contraction indent few-repeated-punct-space; do echo "-i ${idiom} "; done)
+```
+
+#### General
+
+General-purpose pattern which is loosely analogous to GPT-4's pattern.
+
+```bash
+TODO!
+```
+
+#### Broad
+
+Permissive pattern which allows some common idioms to form. Allows multi-word tokens to form.
+
+```bash
+TODO!
+```
+
+#### Loose
+
+Permits a wide range of patterns and idioms. Highest compression.
+
+```bash
+TODO!
 ```

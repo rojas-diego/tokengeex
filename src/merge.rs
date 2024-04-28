@@ -107,7 +107,7 @@ impl ModelVocabularyMerger {
                 {
                     if !ignore.contains(&pair) {
                         log::debug!(
-                            "Ignoring merge of a={} b={} freq={} into={:?}",
+                            "Ignoring merge of a={} b={} freq={} into={}",
                             a,
                             b,
                             freq,

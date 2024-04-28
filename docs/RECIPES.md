@@ -40,11 +40,11 @@ RUST_LOG=debug tokengeex filter --input 'hub/vocab/v2/exact-32k-pruned.json' \
 ## `exact-32k-merged`
 
 ```bash
-RUST_LOG=debug tokengeex merge --input 'hub/vocab/v2/exact-30k-filtered.json' \
+RUST_LOG=info tokengeex merge --input 'hub/vocab/v2/exact-30k-filtered.json' \
     --output 'hub/vocab/v2/exact-32k-merged.json' \
-    --allow 'data/general.regex' \
+    --allow 'data/exact-plus.regex' \
     --num-merges 2000 \
-    --step 10 \
+    --step 100 \
     --scale-factor 0.9 \
     --max-token-length 20 \
     $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.25 "; done)
@@ -94,7 +94,7 @@ RUST_LOG=debug tokengeex merge --input 'hub/vocab/v2/general-30k-filtered.json' 
     --output 'hub/vocab/v2/general-32k-merged.json' \
     --allow 'data/idiomatic.regex' \
     --num-merges 2000 \
-    --step 10 \
+    --step 100 \
     --scale-factor 0.9 \
     --max-token-length 20 \
     $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.25 "; done)

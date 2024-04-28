@@ -16,7 +16,7 @@ RUST_LOG=debug tokengeex regex --output data/exact.regex \
 The most restrictive pattern. Does not allow punctuation to be mixed in with words and strictly adheres to code structure. Does not allow words that mix casing. Digits are encoded as a single token.
 
 ```bash
-$(for idiom in any-char lowercase-word uppercase-word capitalized-word english-contraction indent few-repeated-punct-space; do echo "-i ${idiom} "; done)
+$(for idiom in any-char lowercase-word uppercase-word capitalized-word english-contraction chinese-word indent few-repeated-punct-space; do echo "-i ${idiom} "; done)
 ```
 
 #### General
@@ -24,7 +24,7 @@ $(for idiom in any-char lowercase-word uppercase-word capitalized-word english-c
 General-purpose pattern which is loosely analogous to GPT-4's pattern. Numbers of up to three digits are allowed.
 
 ```bash
-TODO!
+$(for idiom in any-char ch; do echo "-i ${idiom} "; done)
 ```
 
 #### Broad

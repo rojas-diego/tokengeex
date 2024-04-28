@@ -22,7 +22,7 @@ RUST_LOG=debug tokengeex generate --output 'hub/vocab/v2/exact-500k-init.json' \
 ```bash
 RUST_LOG=debug tokengeex prune --input 'hub/vocab/v2/exact-500k-init.json' \
     --output 'hub/vocab/v2/exact-32k-pruned.json' \
-    --vocab-size 32768 \
+    --vocab-size 32000 \
     --shrink-factor 0.8 \
     --em-subiters 2 \
     $(for lang in infilling assembly cuda hcl kotlin php shell xml c-sharp dart html powershell sql yaml c diff java lua python swift zig chinese-markdown dockerfile javascript makefile r tex cmake elixir json markdown ruby toml cpp go jsx pascal rust typescript css haskell julia perl scala vue; do echo "--train ${lang}:./hub/data/train/${lang}.bin:0.25 "; done)

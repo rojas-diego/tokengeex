@@ -217,7 +217,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     // Whitespace
     (
         "indent",
-        r#"(?:[ ]+)|[\t]+)"#,
+        r#"(?:[ ]+)|[\t]+"#,
         &[" ", "  ", "    ", "\t", "\t\t", "\t\t\t"],
         &["\t "],
     ),

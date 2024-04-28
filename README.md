@@ -56,6 +56,11 @@ RUST_LOG=debug tokengeex merge --input 'hub/vocab/v2/50k-filtered.json' \
 
 ### Regex
 
+```bash
+RUST_LOG=debug tokengeex regex --output data/exact.regex \
+    # Place the idioms and regexes here.
+```
+
 #### Exact
 
 The most restrictive pattern. Does not allow punctuation to be mixed in with words and strictly adheres to code structure. Does not allow words that mix casing. Digits are encoded as a single token.

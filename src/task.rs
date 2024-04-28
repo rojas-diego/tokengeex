@@ -1,25 +1,30 @@
+use rayon::current_num_threads;
 use std::{
-    sync::atomic::{AtomicUsize, Ordering::Relaxed},
-    thread::ThreadId,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
+        Arc,
+    },
     time::Instant,
 };
 
-use rayon::current_num_threads;
-
+#[derive(Clone)]
 pub struct Task {
+    inner: Arc<TaskInner>,
+}
+
+struct TaskInner {
     pub start: Instant,
     pub desc: String,
     pub num_samples: usize,
     pub num_samples_processed: AtomicUsize,
     pub num_bytes_processed: AtomicUsize,
+    pub finished: AtomicBool,
 }
 
-pub struct LocalTask<'a> {
-    task: &'a Task,
-    start: Instant,
+pub struct LocalTask {
+    task: Arc<TaskInner>,
     num_chunk_samples: usize,
     num_bytes_processed: usize,
-    tid: u64,
 }
 
 impl Task {
@@ -34,40 +39,67 @@ impl Task {
         );
 
         Self {
-            start: Instant::now(),
-            desc: desc.to_string(),
-            num_samples,
-            num_samples_processed: AtomicUsize::new(0),
-            num_bytes_processed: AtomicUsize::new(0),
+            inner: Arc::new(TaskInner {
+                start: Instant::now(),
+                desc: desc.to_string(),
+                num_samples,
+                num_samples_processed: AtomicUsize::new(0),
+                num_bytes_processed: AtomicUsize::new(0),
+                finished: AtomicBool::new(false),
+            }),
+        }
+    }
+
+    pub fn start(&mut self) {
+        let task = self.inner.clone();
+
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+
+            if task.finished.load(Relaxed) {
+                break;
+            }
+
+            let num_samples_processed = task.num_samples_processed.load(Relaxed);
+            let num_bytes_processed = task.num_bytes_processed.load(Relaxed);
+
+            if num_samples_processed >= task.num_samples {
+                break;
+            }
+
+            let percent_done = (num_samples_processed as f64 / task.num_samples as f64) * 100.0;
+
+            if percent_done == 0.0 {
+                continue;
+            }
+
+            let eta = (task.start.elapsed().as_secs_f64() / percent_done) * (100.0 - percent_done);
+
+            log::info!(
+                "{} | {}/{} samples | {:.2}MB/s | ETA {:.0}s",
+                task.desc,
+                num_samples_processed,
+                task.num_samples,
+                mb_per_sec(num_bytes_processed, task.start),
+                eta.round(),
+            );
+        });
+    }
+
+    pub fn local(&self, num_samples: usize) -> LocalTask {
+        LocalTask {
+            task: self.inner.clone(),
+            num_chunk_samples: num_samples,
+            num_bytes_processed: 0,
         }
     }
 
     pub fn finish(&self) {
-        let total_bytes_processed = self.num_bytes_processed.load(Relaxed);
-        let total_samples_processed = self.num_samples_processed.load(Relaxed);
-
-        log::info!(
-            "{} | FINISHED {:.2}MB in {:.2}m | {} samples | {:.2}MB/s",
-            self.desc,
-            (total_bytes_processed as f64) / 1024.0 / 1024.0,
-            (self.start.elapsed().as_secs() as f64) / 60.0,
-            total_samples_processed,
-            mb_per_sec(total_bytes_processed, self.start),
-        );
-    }
-
-    pub fn local(&self, num_chunk_samples: usize) -> LocalTask<'_> {
-        LocalTask {
-            task: self,
-            start: Instant::now(),
-            num_chunk_samples,
-            num_bytes_processed: 0,
-            tid: unsafe { std::mem::transmute::<ThreadId, u64>(std::thread::current().id()) },
-        }
+        self.inner.finished.store(true, Relaxed);
     }
 }
 
-impl<'a> LocalTask<'a> {
+impl LocalTask {
     pub fn record(&mut self, num_bytes: usize) {
         self.num_bytes_processed += num_bytes;
     }
@@ -79,23 +111,6 @@ impl<'a> LocalTask<'a> {
         self.task
             .num_bytes_processed
             .fetch_add(self.num_bytes_processed, Relaxed);
-
-        let total_bytes_processed = self.task.num_bytes_processed.load(Relaxed);
-        let total_samples_processed = self.task.num_samples_processed.load(Relaxed);
-
-        let percent_done = (total_samples_processed as f64 / self.task.num_samples as f64) * 100.0;
-        let eta = (self.task.start.elapsed().as_secs_f64() / percent_done) * (100.0 - percent_done);
-
-        log::debug!(
-            "Worker {:>3} | ETA {:>5}s | {:>6.2}% | Task {:>5.2}MB/s | Thread {:>5.2}MB/s ({:05.2}MB in {}s)",
-            self.tid,
-            eta.round(),
-            percent_done,
-            mb_per_sec(total_bytes_processed, self.task.start),
-            mb_per_sec(self.num_bytes_processed, self.start),
-            (self.num_bytes_processed as f64) / 1024.0 / 1024.0,
-            self.start.elapsed().as_secs(),
-        );
     }
 }
 

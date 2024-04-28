@@ -384,7 +384,7 @@ where
     Regex::new(
         &regexes
             .into_iter()
-            .map(|r| format!("(?:^{}$)", r.as_str()))
+            .map(|r| format!("^(?:{})$", r.as_str()))
             .collect::<Vec<String>>()
             .join("|"),
     )

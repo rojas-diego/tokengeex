@@ -27,7 +27,9 @@ impl VocabularyFilter {
         let mut vocab = model.vocab().to_vec();
         let mut new_vocab = Vec::new();
 
-        vocab.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        // Sort in reverse order.
+        vocab.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+
         for token in vocab.iter() {
             let should_keep = num_tokens_removed >= num_tokens_to_remove
                 || (token.keep && !self.force)
@@ -40,6 +42,8 @@ impl VocabularyFilter {
                 log::debug!("Removing token: {:?}", token);
             }
         }
+
+        new_vocab.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
         *model = Model::from(new_vocab);
     }

@@ -36,7 +36,7 @@ RUST_LOG=debug tokengeex prune --input 'hub/vocab/v2/exact-500k-init.json' \
 RUST_LOG=debug tokengeex filter --input 'hub/vocab/v2/exact-32k-pruned.json' \
     --output 'hub/vocab/v2/exact-30k-filtered.json' \
     --vocab-size 30000 \
-    --min-score 13.0
+    --min-score -13.0
 ```
 
 ## `exact-32k-merged`
@@ -86,7 +86,7 @@ RUST_LOG=debug tokengeex prune --input 'hub/vocab/v2/general-1000k-init.json' \
 RUST_LOG=debug tokengeex filter --input 'hub/vocab/v2/general-32k-pruned.json' \
     --output 'hub/vocab/v2/general-30k-filtered.json' \
     --vocab-size 30000 \
-    --min-score 13.0
+    --min-score -13.0
 ```
 
 ## `general-32k-merged`

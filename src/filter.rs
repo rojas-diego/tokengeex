@@ -37,6 +37,7 @@ impl VocabularyFilter {
                 new_vocab.push(token.clone());
             } else {
                 num_tokens_removed += 1;
+                log::debug!("Removing token: {:?}", token);
             }
         }
 

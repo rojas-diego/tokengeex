@@ -88,8 +88,6 @@ mod flags {
                 optional -v, --vocab-size vocab_size: usize
 
                 // --- Options ---
-                /// IDs of the tokens to remove.
-                repeated --id id: u32
                 /// Filters tokens with a log probability lower than this value.
                 optional --min-score min_score: f64
                 /// Force. Removes "keep" tokens if they match the filter.
@@ -420,34 +418,26 @@ fn prune_cmd(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn filter_cmd(
-    input: &str,
-    output: &str,
-    vocab_size: usize,
-    ids: &[u32],
-    min_score: Option<f64>,
-    force: bool,
-) {
+fn filter_cmd(input: &str, output: &str, vocab_size: usize, min_score: Option<f64>, force: bool) {
     log::info!(
-        "Filtering vocabulary input={:?} output={:?} vocab_size={} ids={} min_score={:?} force={}",
+        "Filtering vocabulary input={:?} output={:?} vocab_size={} min_score={:?} force={}",
         input,
         output,
         vocab_size,
-        ids.len(),
         min_score,
         force
     );
 
     let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
+    let prev_vocab_size = model.vocab_size();
 
-    let vocab_filter = VocabularyFilter::new(vocab_size, ids, min_score, force);
-
+    let vocab_filter = VocabularyFilter::new(vocab_size, min_score, force);
     vocab_filter.filter(&mut model);
 
     log::debug!(
         "Filtered vocabulary from={} to={} mem={}",
+        prev_vocab_size,
         model.vocab_size(),
-        vocab_size,
         format_bytes_as_mb(model.vocab().iter().map(|token| token.len()).sum::<usize>() as u64)
     );
 
@@ -605,7 +595,6 @@ fn main() {
                 &flags.output,
                 flags.vocab_size.unwrap_or(0),
                 // --- Options ---
-                &flags.id,
                 flags.min_score,
                 flags.force.unwrap_or(false),
             )

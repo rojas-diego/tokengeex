@@ -1,5 +1,7 @@
 # TokenGeeX Recipes
 
+This document details how every single vocabulary inside `hub/vocab/v2` was trained.
+
 ## `exact-500k-init`
 
 ```bash

@@ -67,25 +67,25 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     // Multiple Words
     (
-        "multi-lowercase-word",
+        "two-lowercase-words",
         r#" ?[a-z]+(?: [a-z]+)+"#,
         &["hello world", " hello world"],
         &["Hello World", "HELLO WORLD"],
     ),
     (
-        "multi-uppercase-word",
+        "two-uppercase-words",
         r#" ?[A-Z]+(?: [A-Z]+)+"#,
         &["HELLO WORLD", " HELLO WORLD"],
         &["Hello World", "hello world"],
     ),
     (
-        "multi-capitalized-word",
+        "two-capitalized-words",
         r#" ?[A-Z][a-z]+(?: [A-Z][a-z]+)+"#,
         &[" Hello World", "Hello World"],
         &["HeLlO WoRLD"],
     ),
     (
-        "multi-word",
+        "two-words",
         r#" ?[A-Za-z]+(?: [A-Za-z]+)+"#,
         &["hello world", " Hello World", " HeLlO WoRLD"],
         &["123"],
@@ -298,7 +298,7 @@ pub const IDIOMS: &[(&str, &str, &[&str], &[&str])] = &[
     ),
     (
         "cpp-keywords",
-        r#" ?(?:auto|char|const|double|float|int|long|short|signed|unsigned|void|volatile) ?"#,
+        r#" ?(?:auto|char|const|double|float|int|bool|long|short|signed|unsigned|void|volatile) ?"#,
         &["auto ", "char "],
         &[],
     ),

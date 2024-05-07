@@ -127,7 +127,7 @@ impl LocalTask {
     }
 }
 
-// We chunk up samples into chunks that are at most 1/10th of the
+// We chunk up samples into chunks that are at most f/10th of the
 // per-thread workload because too large chunks can cause some threads
 // to be idle while others are still working. We also prevent
 // chunks from being too small to avoid too much overhead.

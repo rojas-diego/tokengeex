@@ -5,6 +5,7 @@ version = "1.0.0"
 edition = "2021"
 homepage = "https://codegeex.cn"
 documentation = "https://docs.rs/tokengeex/"
+repository = "https://github.com/rojas-diego/tokengeex/"
 readme = "README.md"
 license = "Apache-2.0"
 keywords = ["tokenizer", "codegeex", "llm", "nlp"]

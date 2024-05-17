@@ -101,7 +101,7 @@ impl PyTokenizer {
         self.tokenizer.id_to_special_token(id)
     }
 
-    fn is_special(&self, id: u32) -> Option<bool> {
+    fn is_special(&self, id: u32) -> bool {
         self.tokenizer.is_special(id)
     }
 
@@ -115,6 +115,14 @@ impl PyTokenizer {
 
     fn vocab_size(&self) -> usize {
         self.tokenizer.vocab_size()
+    }
+
+    fn base_vocab_size(&self) -> usize {
+        self.tokenizer.base_vocab_size()
+    }
+
+    fn special_vocab_size(&self) -> usize {
+        self.tokenizer.special_vocab_size()
     }
 
     fn save(&self, filename: &str) {

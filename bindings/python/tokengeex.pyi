@@ -152,10 +152,32 @@ class Tokenizer:
         """
         pass
 
+    def is_special(self, id: int) -> bool:
+        """
+        Returns:
+            True if the token ID is a special token. False otherwise or if the
+            token ID is out of bounds.
+        """
+        pass
+
     def vocab_size(self) -> int:
         """
         Returns:
             The size of the vocabulary including special tokens.
+        """
+        pass
+
+    def base_vocab_size(self) -> int:
+        """
+        Returns:
+            The size of the vocabulary including special tokens.
+        """
+        pass
+
+    def special_vocab_size(self) -> int:
+        """
+        Returns:
+            The number of special tokens in the vocabulary.
         """
         pass
 

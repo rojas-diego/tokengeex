@@ -162,7 +162,7 @@ impl Model {
     /// Convert a token ID to a token. If the byte sequence is not valid UTF-8
     /// it will be returned as a lossy string.
     pub fn id_to_token(&self, id: u32) -> Option<ScoredToken> {
-        if id > self.vocab.len() as u32 {
+        if id >= self.vocab.len() as u32 {
             return None;
         }
 

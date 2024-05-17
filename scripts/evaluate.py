@@ -4,6 +4,7 @@ on the TokenGeeX evaluation set.
 """
 
 import argparse
+import base64
 import glob
 import json
 
@@ -21,7 +22,7 @@ if __name__ == "__main__":
         "-f",
         required=True,
         type=str,
-        help="The path to the SentencePiece model file",
+        help="The path to the tokenizer's vocab file or the tokenizer's slug",
     )
     parser.add_argument(
         "-i",
@@ -43,8 +44,41 @@ if __name__ == "__main__":
     if args.l == "tiktoken":
         import tiktoken
 
-        enc = tiktoken.encoding_for_model(args.f)
-        vocab_size = enc.n_vocab
+        try:
+            enc = tiktoken.encoding_for_model(args.f)
+            vocab_size = enc.n_vocab
+        except KeyError:
+            print(
+                f"Could not find encoding for model {args.f}. Will assume it's a custom vocabulary formatted according to <file>:<model>."
+            )
+            file, model = args.f.split(":")
+
+            # We load the file manually cause TikToken has this annoying caching
+            # mechanism
+            def load_tiktoken_bpe(file):
+                with open(file, "rb") as f:
+                    contents = f.read()
+                return {
+                    base64.b64decode(token): int(rank)
+                    for token, rank in (
+                        line.split() for line in contents.splitlines() if line
+                    )
+                }
+
+            mergeable_ranks = load_tiktoken_bpe(file)
+            print(f"Loaded {file} with {len(mergeable_ranks)} tokens.")
+
+            enc = tiktoken.Encoding(
+                name="custom",
+                mergeable_ranks=mergeable_ranks,
+                pat_str=tiktoken.encoding_for_model(model)._pat_str,
+                special_tokens={},
+                explicit_n_vocab=len(mergeable_ranks),
+            )
+            print(
+                f"Loaded custom vocabulary (based on {model}) with {enc.n_vocab} tokens."
+            )
+            vocab_size = enc.n_vocab
 
         def encode_tiktoken(text):
             return enc.encode_ordinary(text)
@@ -98,6 +132,10 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Invalid tokenization library: {args.l}")
 
+    vocab_name = args.f.split("/")[-1].split(".")[0]
+
+    print(f"[{vocab_name}] Vocab size: {vocab_size}")
+
     num_buckets = 50
     bucket_size = vocab_size // num_buckets
     out = {
@@ -133,7 +171,7 @@ if __name__ == "__main__":
         }
 
         print(
-            f"{filename_base}, {len(samples)} samples, {num_tokens} tokens, {num_chars} chars, {chars_per_token} chars per token"
+            f"[{vocab_name}] {filename_base}, {len(samples)} samples, {num_tokens} tokens, {num_chars} chars, {chars_per_token} chars per token"
         )
 
     frequency_buckets.sort()

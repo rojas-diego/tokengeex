@@ -209,13 +209,13 @@ impl Tokenizer {
         self.model.id_to_token(id)
     }
 
-    pub fn is_special(&self, id: TokenID) -> Option<bool> {
+    pub fn is_special(&self, id: TokenID) -> bool {
         if id < self.model.vocab_size() as TokenID {
-            return Some(false);
+            return false;
         }
 
         let id = id - self.model.vocab_size() as TokenID;
-        Some(self.special_tokens.get(id as usize).is_some())
+        self.special_tokens.get(id as usize).is_some()
     }
 
     pub fn special_tokens(&self) -> Vec<String> {
@@ -224,6 +224,14 @@ impl Tokenizer {
 
     pub fn vocab_size(&self) -> usize {
         self.model.vocab_size() + self.special_tokens.len()
+    }
+
+    pub fn base_vocab_size(&self) -> usize {
+        self.model.vocab_size()
+    }
+
+    pub fn special_vocab_size(&self) -> usize {
+        self.special_tokens.len()
     }
 
     pub fn save(&self, filepath: &str) -> std::result::Result<(), Box<dyn std::error::Error>> {

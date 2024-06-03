@@ -31,7 +31,7 @@ impl Model {
 
     /// Populates a lattice with all the possible tokenizations of the input
     /// sentence.
-    pub fn populate_nodes(&self, lattice: &mut Lattice) {
+    pub fn populate_nodes(&self, lattice: &mut Lattice, dropout: f64) {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = lattice.sentence;
 
@@ -44,6 +44,10 @@ impl Model {
                 .common_prefix_search(suffix.iter().copied(), &mut buff)
             {
                 let score = &self.vocab[id as usize].score;
+
+                if len > 1 && dropout > 0.0 && rand::random::<f64>() < dropout {
+                    continue;
+                }
 
                 lattice.insert(pos, id, len as usize, *score);
             }

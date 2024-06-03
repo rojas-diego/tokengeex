@@ -7,14 +7,16 @@ pub struct ModelVocabularyPruner {
     vocab_size: usize,
     shrink_factor: f64,
     em_subiters: usize,
+    dropout: f64,
 }
 
 impl ModelVocabularyPruner {
-    pub fn new(vocab_size: usize, shrink_factor: f64, em_subiters: usize) -> Self {
+    pub fn new(vocab_size: usize, shrink_factor: f64, em_subiters: usize, dropout: f64) -> Self {
         Self {
             vocab_size,
             shrink_factor,
             em_subiters,
+            dropout,
         }
     }
 
@@ -82,7 +84,7 @@ impl ModelVocabularyPruner {
                     debug_assert!(!sample.is_empty(), "empty sample");
 
                     lattice.from(snippet, &mut pool);
-                    model.populate_nodes(&mut lattice);
+                    model.populate_nodes(&mut lattice, self.dropout);
 
                     let z = lattice.populate_marginal(&mut expected_frequencies);
                     if !z.is_normal() {
@@ -180,7 +182,7 @@ impl ModelVocabularyPruner {
         let mut pool = VecPool::with_capacity(32, 16);
         for (id, token) in model.vocab().iter().enumerate() {
             lattice.from(&token.value, &mut pool);
-            model.populate_nodes(&mut lattice);
+            model.populate_nodes(&mut lattice, 0.0);
 
             // The second best path is the alternative to the best path. The
             // first path will always be the token itself.

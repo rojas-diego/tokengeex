@@ -476,7 +476,7 @@ fn prune_cmd(
     let train = load_sources(train, &processors, "train");
     let train_samples = shuffled_train_samples(&train);
 
-    let vocab_pruner = ModelVocabularyPruner::new(vocab_size, shrink_factor, em_subiters);
+    let vocab_pruner = ModelVocabularyPruner::new(vocab_size, shrink_factor, em_subiters, dropout);
 
     vocab_pruner.prune(&mut model, &train_samples).unwrap();
 

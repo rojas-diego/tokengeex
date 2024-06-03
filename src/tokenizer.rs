@@ -34,8 +34,8 @@ impl Tokenizer {
 
     /// Add special tokens to this tokenizer. Special tokens are encoded before
     /// the rest of the tokenization pipeline. They are assigned IDs starting
-    /// from the end of the vocabulary. If the special token is already present,
-    /// it is ignored.
+    /// from the end of the vocabulary. If a special token already exists, it is
+    /// ignored.
     pub fn add_special_tokens<I>(&mut self, tokens: I)
     where
         I: IntoIterator,
@@ -53,7 +53,7 @@ impl Tokenizer {
     }
 
     /// Add tokens to the underlying model.
-    pub fn add_tokens<I>(&mut self, tokens: I)
+    pub fn add_base_tokens<I>(&mut self, tokens: I)
     where
         I: IntoIterator<Item = ScoredToken>,
     {
@@ -62,7 +62,7 @@ impl Tokenizer {
 
     /// Encode the input sequence into an array of token IDs. Special tokens
     /// are encoded first and then the model takes care of the rest.
-    pub fn encode(&self, input: &str) -> Result<Vec<u32>> {
+    pub fn encode(&self, input: &str, dropout: f64) -> Result<Vec<u32>> {
         let mut ids = Vec::new();
 
         for (substr, is_special) in SpecialTokenSplitter::new(input, self.special_tokens.as_slice())
@@ -81,7 +81,7 @@ impl Tokenizer {
                     .iter()
                     .fold(substr.to_string(), |s, p| p.preprocess(&s));
 
-                ids.extend(self.model.encode(&processed)?);
+                ids.extend(self.model.encode(&processed, dropout)?);
             }
         }
 
@@ -89,36 +89,36 @@ impl Tokenizer {
     }
 
     /// Encode the input sequence without special tokens.
-    pub fn encode_ordinary(&self, input: &str) -> Result<Vec<u32>> {
+    pub fn encode_ordinary(&self, input: &str, dropout: f64) -> Result<Vec<u32>> {
         let processed = self
             .processors
             .iter()
             .fold(input.to_string(), |s, p| p.preprocess(&s));
 
-        self.model.encode(&processed)
+        self.model.encode(&processed, dropout)
     }
 
     /// Encode multiple samples at once.
-    pub fn encode_batch<I>(&self, inputs: I) -> Result<Vec<Vec<u32>>>
+    pub fn encode_batch<I>(&self, inputs: I, dropout: f64) -> Result<Vec<Vec<u32>>>
     where
         I: IntoParallelIterator,
         I::Item: AsRef<str>,
     {
         inputs
             .into_par_iter()
-            .map(|s| self.encode(s.as_ref()))
+            .map(|s| self.encode(s.as_ref(), dropout))
             .collect()
     }
 
     /// Encode multiple samples at once without special tokens.
-    pub fn encode_ordinary_batch<I>(&self, inputs: I) -> Result<Vec<Vec<u32>>>
+    pub fn encode_ordinary_batch<I>(&self, inputs: I, dropout: f64) -> Result<Vec<Vec<u32>>>
     where
         I: IntoParallelIterator,
         I::Item: AsRef<str>,
     {
         inputs
             .into_par_iter()
-            .map(|s| self.encode_ordinary(s.as_ref()))
+            .map(|s| self.encode_ordinary(s.as_ref(), dropout))
             .collect()
     }
 
@@ -186,14 +186,34 @@ impl Tokenizer {
             .collect()
     }
 
+    pub fn token_to_id(&self, token: &Vec<u8>) -> Option<TokenID> {
+        if let Some(id) = self.base_token_to_id(token) {
+            return Some(id);
+        }
+
+        if let Ok(v) = std::str::from_utf8(token.as_slice()) {
+            if let Some(id) = self.special_token_to_id(v) {
+                return Some(id);
+            }
+        }
+
+        None
+    }
+
     pub fn special_token_to_id(&self, token: &str) -> Option<TokenID> {
         self.special_tokens_map
             .get(token)
             .map(|id| *id + self.model.vocab_size() as TokenID)
     }
 
-    pub fn token_to_id(&self, token: Token) -> Option<TokenID> {
+    pub fn base_token_to_id(&self, token: &Token) -> Option<TokenID> {
         self.model.token_to_id(token)
+    }
+
+    pub fn id_to_token(&self, id: TokenID) -> Option<Vec<u8>> {
+        self.id_to_special_token(id)
+            .map(|s| s.as_bytes().to_vec())
+            .or_else(|| self.id_to_base_token(id).map(|t| t.value.clone()))
     }
 
     pub fn id_to_special_token(&self, id: TokenID) -> Option<String> {
@@ -205,7 +225,7 @@ impl Tokenizer {
         self.special_tokens.get(id as usize).cloned()
     }
 
-    pub fn id_to_token(&self, id: TokenID) -> Option<ScoredToken> {
+    pub fn id_to_base_token(&self, id: TokenID) -> Option<ScoredToken> {
         self.model.id_to_token(id)
     }
 
@@ -216,6 +236,10 @@ impl Tokenizer {
 
         let id = id - self.model.vocab_size() as TokenID;
         self.special_tokens.get(id as usize).is_some()
+    }
+
+    pub fn is_base(&self, id: TokenID) -> bool {
+        id < self.model.vocab_size() as TokenID
     }
 
     pub fn special_tokens(&self) -> Vec<String> {

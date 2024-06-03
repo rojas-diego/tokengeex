@@ -1,23 +1,27 @@
 from tokengeex import Tokenizer
 
-tokenizer = Tokenizer.from_file("./hub/vocab/v2/51k.json")
+tokenizer = Tokenizer.from_file("./hub/vocab/v2/exact-32k-merged.json")
 
 sentence = "Hello, world!"
 
-# Encode (without special tokens)
-ids = tokenizer.encode_ordinary(sentence)
-print(ids)
+# Encode (without special tokens, no dropout)
+ids = tokenizer.encode_ordinary(sentence, 0.0)
+print(f"{ids} => {[tokenizer.id_to_token(id).decode() for id in ids]}")  # type: ignore
+
+# Encode (with dropout)
+ids = tokenizer.encode(sentence, 0.5)
+print(f"{ids} => {[tokenizer.id_to_token(id).decode() for id in ids]}")  # type: ignore
 
 # Decode
 decoded = tokenizer.decode(ids, include_special_tokens=False)
 print(decoded)
 
 # Vocabulary
-id = tokenizer.token_to_id(b"Hello")
+id = tokenizer.base_token_to_id(b"Hello")
 assert id is not None
 print(id)
 
-token = tokenizer.id_to_token(id)
+token = tokenizer.id_to_base_token(id)
 print(token)
 
 vocab_size = tokenizer.vocab_size()
@@ -33,11 +37,11 @@ assert sid is not None
 print(sid)
 
 sentence = "<s>Hello, world!</s>"
-ids = tokenizer.encode(sentence)
+ids = tokenizer.encode(sentence, 0.0)
 assert ids[0] == sid and ids[-1] == tokenizer.special_token_to_id("</s>")
 print(ids)
 
-ids = tokenizer.encode_ordinary(sentence)
+ids = tokenizer.encode_ordinary(sentence, 0.0)
 assert ids[0] != sid and ids[-1] != tokenizer.special_token_to_id("</s>")
 print(ids)
 
@@ -50,7 +54,7 @@ print(stoken)
 
 # Batch encoding/decoding
 sentences = ["<s>Hello, world!</s>", "<s>Hello, tokengeex!</s>"]
-ids = tokenizer.encode_batch(sentences)
+ids = tokenizer.encode_batch(sentences, 0.0)
 print(ids)
 
 decoded = tokenizer.decode_batch(ids, include_special_tokens=True)
@@ -61,7 +65,7 @@ decoded = tokenizer.decode_batch(ids, include_special_tokens=False)
 assert decoded == ["Hello, world!", "Hello, tokengeex!"]
 print(decoded)
 
-ids = tokenizer.encode_ordinary_batch(sentences)
+ids = tokenizer.encode_ordinary_batch(sentences, 0.0)
 print(ids)
 
 # Common prefix search

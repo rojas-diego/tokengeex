@@ -215,7 +215,7 @@ impl ModelVocabularyPruner {
                 let mut frequencies: Vec<usize> = vec![0; model.vocab_size()];
 
                 for sample in chunk {
-                    let ids = model.encode(sample).map_err(|err| match err {
+                    let ids = model.encode(sample, 0.0).map_err(|err| match err {
                         tokengeex::Error::NoPath(pos, len) => Error::NoPath(pos, len),
                         _ => panic!("unexpected error: {:?}", err),
                     })?;

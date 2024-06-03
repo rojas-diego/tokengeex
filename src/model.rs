@@ -56,7 +56,7 @@ impl Model {
 
     /// Encode the input sequence into a sequence of token IDs in O(n) time
     /// using the SentencePiece DP algorithm.
-    pub fn encode(&self, input: &str) -> Result<Vec<u32>> {
+    pub fn encode(&self, input: &str, dropout: f64) -> Result<Vec<u32>> {
         let mut buff = Vec::<u8>::with_capacity(256);
         let input = input.as_bytes();
 
@@ -97,7 +97,9 @@ impl Model {
                 let node = &dp[pos + len];
                 let score = dp[pos].score + self.vocab[id as usize].score;
 
-                if node.start.is_none() || score > node.score {
+                if (node.start.is_none() || score > node.score)
+                    && (dropout <= 0.0 || len <= 1 || dropout < rand::random::<f64>())
+                {
                     dp[pos + len] = Node {
                         id,
                         score,
@@ -159,8 +161,8 @@ impl Model {
 
     /// Convert a token to a token ID. Currently it is not possible to access
     /// tokens that are invalid UTF-8 through this method.
-    pub fn token_to_id(&self, token: Token) -> Option<u32> {
-        self.token_to_ids.get(&token).copied()
+    pub fn token_to_id(&self, token: &Token) -> Option<u32> {
+        self.token_to_ids.get(token).copied()
     }
 
     /// Convert a token ID to a token. If the byte sequence is not valid UTF-8
@@ -208,8 +210,33 @@ mod tests {
         let vocab = make_vocab(&[(b"a", -3.0), (b"b", -3.0), (b"c", -3.0), (b"ab", -4.0)]);
 
         let model = Model::from(vocab);
-        let ids = model.encode("abc").unwrap();
+        let ids = model.encode("abc", 0.0).unwrap();
         assert_eq!(ids, vec![3, 2]);
+    }
+
+    #[test]
+    fn test_encode_dropout() {
+        let vocab = make_vocab(&[
+            (b"a", -3.0),
+            (b"b", -3.0),
+            (b"c", -3.0),
+            (b"d", -3.0),
+            (b"e", -3.0),
+            (b"f", -3.0),
+            (b"ab", -4.0),
+            (b"abc", -5.0),
+            (b"abcd", -6.0),
+            (b"abcde", -7.0),
+            (b"abcdef", -8.0),
+        ]);
+
+        let model = Model::from(vocab);
+        let ids = model.encode("abcdef", 1.0).unwrap();
+        println!("{:?}", ids);
+        assert_eq!(ids, vec![0, 1, 2, 3, 4, 5]);
+
+        let ids = model.encode("abcdef", 0.5).unwrap();
+        println!("{:?}", ids);
     }
 
     #[test]
@@ -218,7 +245,7 @@ mod tests {
         let model = Model::from(vocab);
         let input = "你好，我叫罗杰斯";
 
-        let ids = model.encode(input).unwrap();
+        let ids = model.encode(input, 0.0).unwrap();
         assert_eq!(ids.len(), input.len());
         let decoded = model.decode(&ids).unwrap();
         assert_eq!(decoded, input);

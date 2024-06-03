@@ -55,7 +55,7 @@ impl ModelVocabularyMerger {
                 let mut local_pair_frequencies = FnvHashMap::<(TokenID, TokenID), usize>::default();
 
                 for sample in chunk {
-                    let ids = model.encode(sample).unwrap();
+                    let ids = model.encode(sample, 0.0).unwrap();
 
                     for i in 1..ids.len() {
                         let pair = (ids[i - 1], ids[i]);

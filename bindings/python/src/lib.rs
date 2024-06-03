@@ -4,7 +4,7 @@ use pyo3::create_exception;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3::types::*;
-use tokengeex::{Token, TokenID};
+use tokengeex::TokenID;
 
 create_exception!(tokengeex, TokenGeeXError, pyo3::exceptions::PyException);
 
@@ -38,24 +38,33 @@ impl From<PyTokenGeeXError> for PyErr {
 
 #[pymethods]
 impl PyTokenizer {
-    fn encode(&self, text: &str) -> Result<Vec<TokenID>, PyTokenGeeXError> {
-        self.tokenizer.encode(text).map_err(|e| e.into())
+    fn encode(&self, text: &str, dropout: f64) -> Result<Vec<TokenID>, PyTokenGeeXError> {
+        self.tokenizer.encode(text, dropout).map_err(|e| e.into())
     }
 
-    fn encode_ordinary(&self, text: &str) -> Result<Vec<TokenID>, PyTokenGeeXError> {
-        self.tokenizer.encode_ordinary(text).map_err(|e| e.into())
+    fn encode_ordinary(&self, text: &str, dropout: f64) -> Result<Vec<TokenID>, PyTokenGeeXError> {
+        self.tokenizer
+            .encode_ordinary(text, dropout)
+            .map_err(|e| e.into())
     }
 
-    fn encode_batch(&self, texts: Vec<&str>) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
-        self.tokenizer.encode_batch(texts).map_err(|e| e.into())
+    fn encode_batch(
+        &self,
+        texts: Vec<&str>,
+        dropout: f64,
+    ) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
+        self.tokenizer
+            .encode_batch(texts, dropout)
+            .map_err(|e| e.into())
     }
 
     fn encode_ordinary_batch(
         &self,
         texts: Vec<&str>,
+        dropout: f64,
     ) -> Result<Vec<Vec<TokenID>>, PyTokenGeeXError> {
         self.tokenizer
-            .encode_ordinary_batch(texts)
+            .encode_ordinary_batch(texts, dropout)
             .map_err(|e| e.into())
     }
 
@@ -79,16 +88,26 @@ impl PyTokenizer {
             .map_err(|e| e.into())
     }
 
-    fn token_to_id(&self, token: Token) -> Option<TokenID> {
-        self.tokenizer.token_to_id(token)
+    fn token_to_id(&self, token: Vec<u8>) -> Option<TokenID> {
+        self.tokenizer.token_to_id(&token)
+    }
+
+    fn base_token_to_id(&self, token: Vec<u8>) -> Option<TokenID> {
+        self.tokenizer.base_token_to_id(&token)
     }
 
     fn special_token_to_id(&self, token: &str) -> Option<TokenID> {
         self.tokenizer.special_token_to_id(token)
     }
 
-    fn id_to_token(&self, py: Python, id: TokenID) -> Option<(Py<PyBytes>, f64)> {
+    fn id_to_token(&self, py: Python, id: TokenID) -> Option<Py<PyBytes>> {
         let token = self.tokenizer.id_to_token(id);
+
+        token.map(|token| PyBytes::new(py, &token).into())
+    }
+
+    fn id_to_base_token(&self, py: Python, id: TokenID) -> Option<(Py<PyBytes>, f64)> {
+        let token = self.tokenizer.id_to_base_token(id);
 
         if let Some(token) = token {
             Some((PyBytes::new(py, &token.value).into(), token.score))
@@ -103,6 +122,10 @@ impl PyTokenizer {
 
     fn is_special(&self, id: u32) -> bool {
         self.tokenizer.is_special(id)
+    }
+
+    fn is_base(&self, id: u32) -> bool {
+        self.tokenizer.is_base(id)
     }
 
     fn add_special_tokens(&mut self, tokens: Vec<String>) {

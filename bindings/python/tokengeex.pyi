@@ -8,7 +8,7 @@ class TokenGeeXError(Exception):
     pass
 
 class Tokenizer:
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str, dropout: float) -> List[int]:
         """
         Encodes a string into a list of tokens.
 
@@ -23,7 +23,7 @@ class Tokenizer:
         """
         pass
 
-    def encode_ordinary(self, text: str) -> List[int]:
+    def encode_ordinary(self, text: str, dropout: float) -> List[int]:
         """
         Encodes a string into a list of tokens ignoring special tokens.
 
@@ -38,7 +38,7 @@ class Tokenizer:
         """
         pass
 
-    def encode_batch(self, texts: List[str]) -> List[List[int]]:
+    def encode_batch(self, texts: List[str], dropout: float) -> List[List[int]]:
         """
         Encodes a list of strings into a list of lists of tokens.
 
@@ -53,7 +53,9 @@ class Tokenizer:
         """
         pass
 
-    def encode_ordinary_batch(self, texts: List[str]) -> List[List[int]]:
+    def encode_ordinary_batch(
+        self, texts: List[str], dropout: float
+    ) -> List[List[int]]:
         """
         Encodes a list of strings into a list of lists of tokens ignoring special tokens.
 
@@ -109,6 +111,15 @@ class Tokenizer:
         """
         pass
 
+    def base_token_to_id(self, token: bytes) -> Optional[int]:
+        """
+        Converts a token to its ID ignoring special tokens.
+
+        Returns:
+            The token ID or None if the token is not in the vocabulary.
+        """
+        pass
+
     def special_token_to_id(self, token: str) -> Optional[int]:
         """
         Converts a special token to its ID.
@@ -118,9 +129,18 @@ class Tokenizer:
         """
         pass
 
-    def id_to_token(self, id: int) -> Optional[Tuple[bytes, float]]:
+    def id_to_token(self, id: int) -> Optional[bytes]:
         """
         Converts an ID to its token.
+
+        Returns:
+            The token or None if the ID is not in the vocabulary.
+        """
+        pass
+
+    def id_to_base_token(self, id: int) -> Optional[Tuple[bytes, float]]:
+        """
+        Converts an ID to its token ignoring special tokens.
 
         Returns:
             The token or None if the ID is not in the vocabulary.

@@ -7,12 +7,14 @@ use tokengeex::{CrlfProcessor, Model, Processor, ProcessorWrapper, Tokenizer, Un
 mod filter;
 mod generate;
 mod merge;
+mod mine;
 mod prune;
 mod regex;
 
 pub use filter::*;
 pub use generate::*;
 pub use merge::*;
+pub use mine::*;
 pub use prune::*;
 pub use regex::*;
 
@@ -38,16 +40,19 @@ mod flags {
 
                 // --- Suggested, Added and Special Tokens ---
                 /// Special token.
-                repeated --special-token special_token: String
+                repeated --special special: String
+                /// Path to a file which contains an array of suggested tokens.
+                repeated --suggested suggested: String
+                /// Path to a file which contains an array of added tokens.
+                repeated --added added: String
 
                 // --- Options ---
-                /// A Regex rule. If specified, only substrings that
-                /// match this regex will be considered in the vocabulary.
-                /// Does not support fancy regex syntax.
+                /// Path to a file which contains a regular expression. Only
+                /// merges that match this regex will be considered.
                 optional --allow allow: String
-                /// A Regex rule. If specified, when constructing the
-                /// vocabulary, each sample will be according to this regex.
-                /// Supports fancy regex syntax.
+                /// Path to a file which contains a regular expression. If
+                /// specified, every sample will be split according to this
+                /// regex before being processed. Supports fancy regex syntax.
                 optional --split split: String
                 /// Probability of inserting a new token to the vocabulary.
                 optional --insert-probability insert_probability: f64
@@ -71,6 +76,9 @@ mod flags {
                 repeated --train input: String
 
                 // --- Options ---
+                /// Dropout factor. The probability of omitting a token from
+                /// the segmentation of a sample.
+                optional --dropout dropout: f64
                 /// How much to shrink the vocabulary at each iteration.
                 optional --shrink-factor shrink_factor: f64
                 /// Number of sub-iterations for the EM algorithm.
@@ -107,9 +115,8 @@ mod flags {
                 repeated --train input: String
 
                 // --- Options ---
-                /// A Regex rule. If specified, only substrings that
-                /// match this regex will be considered to be merged.
-                /// Does not support fancy regex syntax.
+                /// Path to a file which contains a regular expression. Only
+                /// merges that match this regex will be considered.
                 required --allow allow: String
                 /// The number of merges to perform.
                 optional --num-merges num_merges: usize
@@ -121,6 +128,34 @@ mod flags {
                 optional --scale-factor scale_factor: f64
                 /// Maximum size of a token.
                 optional --max-token-length max_token_length: usize
+            }
+
+            /// Generate a Regex for downstream use with TokenGeeX.
+            cmd regex {
+                /// Output file to save the Regex.
+                required -o, --output output: String
+                /// Pattern to include. Can be either a registered pattern or a
+                /// custom Regex.
+                repeated -p, --pattern pattern: String
+            }
+
+            /// Mine for common idioms from a large scale dataset.
+            cmd mine {
+                /// Number of idioms to keep from the set of most occuring
+                /// idioms.
+                required -n, --num-idioms num_idioms: usize
+                /// Output file to save the idioms.
+                required -o, --output output: String
+
+                // --- Data ---
+                /// List of source files to train the tokenizer on. Must be
+                /// formatted according to {name}:{path}[:proportion].
+                repeated --train input: String
+
+                // --- Options ---
+                /// Pattern to look for. Can be either a registered pattern or a
+                /// custom Regex.
+                repeated -p, --pattern pattern: String
             }
 
             /// Encode text using a tokeniser.
@@ -138,38 +173,8 @@ mod flags {
                 /// Comma separated list of token IDs. Otherwise, stdin is used.
                 optional -i, --input input: String
             }
-
-            /// Generate a Regex for downstream use with TokenGeeX.
-            cmd regex {
-                /// Output file to save the Regex.
-                required -o, --output output: String
-                /// Comma separated list of idioms to use.
-                repeated -i, --idiom idiom: String
-                /// List of Regex rules to use in addition to the idioms.
-                repeated -r, --rule rule: String
-            }
         }
     }
-}
-
-fn load_processors(processors: &[String]) -> Vec<ProcessorWrapper> {
-    processors
-        .iter()
-        .map(|name| {
-            let processor = match name.as_str() {
-                "crlf" => ProcessorWrapper::Crlf(CrlfProcessor),
-                "nfc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfc),
-                "nfd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfd),
-                "nfkc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkc),
-                "nfkd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkd),
-                _ => panic!("Processor {:?} is not supported.", name),
-            };
-
-            log::info!("Using processor {:?}", name);
-
-            processor
-        })
-        .collect()
 }
 
 pub enum Error {
@@ -207,6 +212,26 @@ pub struct Source {
     pub total_chars: usize,
     #[allow(dead_code)]
     pub processed_total_chars: usize,
+}
+
+fn load_processors(processors: &[String]) -> Vec<ProcessorWrapper> {
+    processors
+        .iter()
+        .map(|name| {
+            let processor = match name.as_str() {
+                "crlf" => ProcessorWrapper::Crlf(CrlfProcessor),
+                "nfc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfc),
+                "nfd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfd),
+                "nfkc" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkc),
+                "nfkd" => ProcessorWrapper::Unicode(UnicodeProcessor::Nfkd),
+                _ => panic!("Processor {:?} is not supported.", name),
+            };
+
+            log::info!("Using processor {:?}", name);
+
+            processor
+        })
+        .collect()
 }
 
 fn load_sources(sources: &[String], processors: &[ProcessorWrapper], mode: &str) -> Vec<Source> {
@@ -288,6 +313,71 @@ fn load_sources(sources: &[String], processors: &[ProcessorWrapper], mode: &str)
         .collect()
 }
 
+fn load_regex(path: &str) -> Regex {
+    Regex::new(
+        std::fs::read_to_string(path)
+            .unwrap()
+            .replace(['\n', '\r'], "")
+            .trim(),
+    )
+    .unwrap()
+}
+
+fn load_fancy_regex(path: &str) -> FancyRegex {
+    FancyRegex::new(
+        std::fs::read_to_string(path)
+            .unwrap()
+            .replace(['\n', '\r'], "")
+            .trim(),
+    )
+    .unwrap()
+}
+
+fn load_patterns(patterns: &[String]) -> Vec<Regex> {
+    patterns
+        .iter()
+        .map(|name| {
+            PATTERNS
+                .iter()
+                .find(|(n, _, _, _)| n == name)
+                .map(|(_, pattern, _, _)| pattern())
+                .unwrap_or_else(|| {
+                    Regex::new(name).unwrap_or_else(|e| {
+                        panic!("Failed to parse pattern {:?} as a regex: {:?}", name, e)
+                    })
+                })
+        })
+        .collect::<Vec<Regex>>()
+}
+
+fn load_tokens(tokens: &[String], mode: &str) -> Vec<String> {
+    tokens
+        .iter()
+        .flat_map(|path| {
+            let tokens: Vec<String> = serde_json::from_str(
+                &std::fs::read_to_string(path)
+                    .unwrap_or_else(|_| panic!("Failed to read tokens from {:?}", path)),
+            )
+            .unwrap();
+
+            log::info!("Loaded {} {} tokens from {:?}", tokens.len(), mode, path);
+
+            tokens
+        })
+        .collect()
+}
+
+fn shuffled_train_samples(sources: &[Source]) -> Vec<&str> {
+    let mut train_samples = sources
+        .iter()
+        .flat_map(|source| source.processed_samples.iter())
+        .map(|s| s.as_str())
+        .collect::<Vec<&str>>();
+    let mut rng = rand::thread_rng();
+    train_samples.shuffle(&mut rng);
+    train_samples
+}
+
 fn format_bytes_as_mb(bytes: u64) -> String {
     format!("{:.2}MB", bytes as f64 / 1_000_000.0)
 }
@@ -299,6 +389,8 @@ fn generate_cmd(
     sources: &[String],
     processors: &[String],
     special_tokens: &[String],
+    suggested_tokens: &[String],
+    added_tokens: &[String],
     split: Option<String>,
     allow: Option<String>,
     insert_probability: f64,
@@ -316,24 +408,10 @@ fn generate_cmd(
 
     let processors = load_processors(processors);
     let train = load_sources(sources, &processors, "train");
-    let split_regex = split.map(|split| {
-        FancyRegex::new(
-            std::fs::read_to_string(split)
-                .unwrap()
-                .replace(['\n', '\r'], "")
-                .trim(),
-        )
-        .unwrap()
-    });
-    let allow_regex = allow.map(|allow| {
-        Regex::new(
-            std::fs::read_to_string(allow)
-                .unwrap()
-                .replace(['\n', '\r'], "")
-                .trim(),
-        )
-        .unwrap()
-    });
+    let allow_regex = allow.map(|allow| load_regex(&allow));
+    let split_regex = split.map(|split| load_fancy_regex(&split));
+    let added_tokens = load_tokens(added_tokens, "added");
+    let suggested_tokens = load_tokens(suggested_tokens, "suggested");
 
     log::debug!("Allow regex: {:?}", allow_regex);
     log::debug!("Split regex: {:?}", split_regex);
@@ -343,6 +421,8 @@ fn generate_cmd(
         insert_probability,
         split_regex,
         allow_regex,
+        added_tokens,
+        suggested_tokens,
     );
 
     for source in &train {
@@ -377,28 +457,24 @@ fn prune_cmd(
     output: &str,
     vocab_size: usize,
     train: &[String],
+    dropout: f64,
     shrink_factor: f64,
     em_subiters: usize,
 ) {
     log::info!(
-        "Pruning vocabulary input={:?} output={:?} vocab_size={} shrink_factor={} em_subiters={}",
+        "Pruning vocabulary input={:?} output={:?} vocab_size={} dropout={} shrink_factor={} em_subiters={}",
         input,
         output,
         vocab_size,
+        dropout,
         shrink_factor,
         em_subiters
     );
 
     let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
-    let prev_vocab_size = model.vocab_size();
+    let initial_vocab_size = model.vocab_size();
     let train = load_sources(train, &processors, "train");
-    let mut train_samples = train
-        .iter()
-        .flat_map(|source| source.processed_samples.iter())
-        .map(|s| s.as_str())
-        .collect::<Vec<&str>>();
-    let mut rng = rand::thread_rng();
-    train_samples.shuffle(&mut rng);
+    let train_samples = shuffled_train_samples(&train);
 
     let vocab_pruner = ModelVocabularyPruner::new(vocab_size, shrink_factor, em_subiters);
 
@@ -406,7 +482,7 @@ fn prune_cmd(
 
     log::info!(
         "Pruned vocabulary from={} to={} mem={}",
-        prev_vocab_size,
+        initial_vocab_size,
         vocab_size,
         format_bytes_as_mb(model.vocab().iter().map(|token| token.len()).sum::<usize>() as u64)
     );
@@ -429,14 +505,14 @@ fn filter_cmd(input: &str, output: &str, vocab_size: usize, min_score: Option<f6
     );
 
     let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
-    let prev_vocab_size = model.vocab_size();
+    let initial_vocab_size = model.vocab_size();
 
     let vocab_filter = VocabularyFilter::new(vocab_size, min_score, force);
     vocab_filter.filter(&mut model);
 
     log::debug!(
         "Filtered vocabulary from={} to={} mem={}",
-        prev_vocab_size,
+        initial_vocab_size,
         model.vocab_size(),
         format_bytes_as_mb(model.vocab().iter().map(|token| token.len()).sum::<usize>() as u64)
     );
@@ -448,40 +524,19 @@ fn filter_cmd(input: &str, output: &str, vocab_size: usize, min_score: Option<f6
 }
 
 #[allow(clippy::too_many_arguments)]
-fn regex_cmd(output: &str, idioms: &[String], rules: &[String]) {
+fn regex_cmd(output: &str, patterns: &[String]) {
     log::info!(
-        "Generating regex output={:?} idioms={:?} rules={:?}",
+        "Generating regex output={:?} patterns={:?}",
         output,
-        idioms.len(),
-        rules
+        patterns.len(),
     );
 
-    let idioms = idioms
-        .iter()
-        .map(|name| {
-            IDIOMS
-                .iter()
-                .find(|(n, _, _, _)| n == name)
-                .unwrap_or_else(|| panic!("Idiom {:?} not found.", name))
-                .1
-                .to_string()
-        })
-        .collect::<Vec<String>>();
+    let patterns = load_patterns(patterns);
+    let re = build_allow_regex(patterns);
 
-    let rules = idioms
-        .iter()
-        .chain(rules.iter())
-        .map(|rule| {
-            Regex::new(rule)
-                .unwrap_or_else(|e| panic!("Failed to compile regex {:?}: {:?}", rule, e))
-        })
-        .collect::<Vec<Regex>>();
+    log::debug!("Generated regex: {:?}", re);
 
-    let regexes = build_allow_regex(rules);
-
-    log::debug!("Generated regex: {:?}", regexes);
-
-    std::fs::write(output, regexes.as_str()).unwrap();
+    std::fs::write(output, re.as_str()).unwrap();
 
     log::info!("Saved regex to {:?}", output);
 }
@@ -514,21 +569,9 @@ fn merge_cmd(
 
     let (mut model, processors, special_tokens) = Tokenizer::from_file(input).unwrap().into_inner();
     let train = load_sources(train, &processors, "train");
-    let mut train_samples = train
-        .iter()
-        .flat_map(|source| source.processed_samples.iter())
-        .map(|s| s.as_str())
-        .collect::<Vec<&str>>();
-    let mut rng = rand::thread_rng();
-    train_samples.shuffle(&mut rng);
-    let prev_vocab_size = model.vocab_size();
-    let allow_regex = Regex::new(
-        std::fs::read_to_string(allow)
-            .unwrap()
-            .replace(['\n', '\r'], "")
-            .trim(),
-    )
-    .unwrap();
+    let train_samples = shuffled_train_samples(&train);
+    let initial_vocab_size = model.vocab_size();
+    let allow_regex = load_regex(allow);
 
     let vocab_merger = ModelVocabularyMerger::new(
         allow_regex,
@@ -542,7 +585,7 @@ fn merge_cmd(
 
     log::info!(
         "Merged vocabulary from={} to={} mem={}",
-        prev_vocab_size,
+        initial_vocab_size,
         model.vocab_size(),
         format_bytes_as_mb(model.vocab().iter().map(|token| token.len()).sum::<usize>() as u64)
     );
@@ -551,6 +594,52 @@ fn merge_cmd(
     tokenizer.save(output).unwrap();
 
     log::info!("Saved merged vocabulary to {:?}", output);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn mine_cmd(num_idioms: usize, output: &str, train: &[String], patterns: &[String]) {
+    assert!(
+        !train.is_empty(),
+        "At least one train source must be provided."
+    );
+    assert!(
+        !patterns.is_empty(),
+        "At least one pattern must be provided."
+    );
+
+    log::info!(
+        "Mining idioms output={:?} num_idioms={} patterns={:?}",
+        output,
+        num_idioms,
+        patterns
+    );
+
+    let train = load_sources(train, &[], "train");
+    let train_samples = shuffled_train_samples(&train);
+    let patterns = load_patterns(patterns);
+    let re = build_mine_regex(patterns);
+
+    let idiom_miner = IdiomMiner::new(num_idioms, re);
+
+    let idioms = idiom_miner.mine(&train_samples);
+
+    log::info!("Found {} idioms.", idioms.len());
+
+    for (idiom, count) in &idioms {
+        log::debug!(
+            "{:?}: {} (~{:.2} per sample)",
+            idiom,
+            count,
+            (*count as f64) / (train_samples.len() as f64)
+        );
+    }
+
+    let idioms = idioms
+        .iter()
+        .map(|(idiom, _)| idiom.clone())
+        .collect::<Vec<String>>();
+
+    std::fs::write(output, serde_json::to_string_pretty(&idioms).unwrap()).unwrap();
 }
 
 fn main() {
@@ -567,7 +656,9 @@ fn main() {
                 // --- Processing ---
                 &flags.processor,
                 // --- Suggested, Added and Special Tokens ---
-                &flags.special_token,
+                &flags.special,
+                &flags.suggested,
+                &flags.added,
                 // --- Options ---
                 flags.split,
                 flags.allow,
@@ -584,6 +675,7 @@ fn main() {
                 // --- Data ---
                 &flags.train,
                 // --- Options ---
+                flags.dropout.unwrap_or(0.01),
                 flags.shrink_factor.unwrap_or(0.8),
                 flags.em_subiters.unwrap_or(1),
             )
@@ -604,8 +696,7 @@ fn main() {
                 // --- General Purpose ---
                 &flags.output,
                 // --- Options ---
-                &flags.idiom,
-                &flags.rule,
+                &flags.pattern,
             )
         }
         flags::TokengeexCmd::Merge(flags) => {
@@ -621,6 +712,17 @@ fn main() {
                 flags.step.unwrap_or(50),
                 flags.scale_factor.unwrap_or(0.9),
                 flags.max_token_length.unwrap_or(24),
+            )
+        }
+        flags::TokengeexCmd::Mine(flags) => {
+            mine_cmd(
+                // --- General Purpose ---
+                flags.num_idioms,
+                &flags.output,
+                // --- Data ---
+                &flags.train,
+                // --- Options ---
+                &flags.pattern,
             )
         }
         flags::TokengeexCmd::Encode(_) => {

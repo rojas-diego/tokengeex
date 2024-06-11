@@ -48,7 +48,7 @@ mod flags {
 
                 // --- Options ---
                 /// Path to a file which contains a regular expression. Only
-                /// merges that match this regex will be considered.
+                /// tokens that match this regex will be considered.
                 optional --allow allow: String
                 /// Path to a file which contains a regular expression. If
                 /// specified, every sample will be split according to this
@@ -133,9 +133,9 @@ mod flags {
             /// Generate a Regex for downstream use with TokenGeeX.
             cmd regex {
                 /// Output file to save the Regex.
-                required -o, --output output: String
-                /// Pattern to include. Can be either a registered pattern or a
-                /// custom Regex.
+                optional -o, --output output: String
+                /// Pattern to include. Can be either a named regex or a
+                /// custom regex.
                 repeated -p, --pattern pattern: String
             }
 
@@ -153,8 +153,8 @@ mod flags {
                 repeated --train input: String
 
                 // --- Options ---
-                /// Pattern to look for. Can be either a registered pattern or a
-                /// custom Regex.
+                /// Pattern to look for. Can be either a named regex or a
+                /// custom regex.
                 repeated -p, --pattern pattern: String
             }
 
@@ -524,21 +524,30 @@ fn filter_cmd(input: &str, output: &str, vocab_size: usize, min_score: Option<f6
 }
 
 #[allow(clippy::too_many_arguments)]
-fn regex_cmd(output: &str, patterns: &[String]) {
-    log::info!(
-        "Generating regex output={:?} patterns={:?}",
-        output,
-        patterns.len(),
-    );
+fn regex_cmd(output: &Option<String>, patterns: &[String]) {
+    match output {
+        None => {
+            for (name, pattern, _, _) in PATTERNS {
+                println!("{}: {}", name, pattern());
+            }
+        }
+        Some(output) => {
+            log::info!(
+                "Generating regex output={:?} patterns={:?}",
+                output,
+                patterns.len(),
+            );
 
-    let patterns = load_patterns(patterns);
-    let re = build_allow_regex(patterns);
+            let patterns = load_patterns(patterns);
+            let re = build_allow_regex(patterns);
 
-    log::debug!("Generated regex: {:?}", re);
+            log::debug!("Generated regex: {:?}", re);
 
-    std::fs::write(output, re.as_str()).unwrap();
+            std::fs::write(output, re.as_str()).unwrap();
 
-    log::info!("Saved regex to {:?}", output);
+            log::info!("Saved regex to {:?}", output);
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -97,8 +97,8 @@ impl Model {
                 let node = &dp[pos + len];
                 let score = dp[pos].score + self.vocab[id as usize].score;
 
-                if (node.start.is_none() || score > node.score)
-                    && (dropout <= 0.0 || len <= 1 || dropout < rand::random::<f64>())
+                if (dropout <= 0.0 || len <= 1 || dropout < rand::random::<f64>())
+                    && (node.start.is_none() || score > node.score)
                 {
                     dp[pos + len] = Node {
                         id,

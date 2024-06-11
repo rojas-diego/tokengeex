@@ -125,7 +125,7 @@ if __name__ == "__main__":
         vocab_size = tokenizer.vocab_size()
 
         def encode_tokengeex(text):
-            return tokenizer.encode(text)
+            return tokenizer.encode(text, dropout=0.0)
 
         encode_fn = encode_tokengeex
 

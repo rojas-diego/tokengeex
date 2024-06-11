@@ -1,13 +1,19 @@
 #!/bin/bash
 
-vocab_dir="hub/vocab/v2"
-input_dir="./hub/data/test/*.bin"
-output_dir="hub/eval/v2"
+vocabdir="hub/vocab/v2"
+outdir="hub/eval/v2"
 
-for json_file in "$vocab_dir"/*.json; do
+for json_file in "$vocabdir"/*.json; do
   filename=$(basename "$json_file")
-  python scripts/evaluate.py -f "$json_file" -i "$input_dir" -o "$output_dir/$filename" -l tokengeex &
-  echo "Evaluating $filename, writing to $output_dir/$filename"
+
+  # If the output file already exists, skip
+  if [ -f "$outdir/$filename" ]; then
+    echo "Skipping $filename, output file already exists"
+    continue
+  fi
+
+  echo "Evaluating $filename, writing to $outdir/$filename"
+  python scripts/evaluate.py -f "$json_file" -i "./hub/data/test/*.bin" -o "$outdir/$filename" -l tokengeex &
 done
 
 wait
